@@ -31,3 +31,5 @@ bject files
 # Debug files
 *.dSYM/
 
+# Ignore pid file
+*.pid
