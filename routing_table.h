@@ -20,6 +20,7 @@
  * insert or update the existing routing table
  * @param dest   destinated router
  * @param port   port of destinated router
+ * @param via    intermediate hop, 0 for direct connection
  * @param metric cost to router
  */
 void updateTable(int dest, int port, int via, int metric);
@@ -38,6 +39,11 @@ int getRouterMetric(int dest);
  */
 int getRouterPort(int dest);
 
+/**
+ * returns the via to destination
+ * @param  dest destinated router
+ * @return      the intermediate hop
+ */
 int getRouterVia(int dest);
 
 
