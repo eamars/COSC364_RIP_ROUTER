@@ -50,24 +50,3 @@ void debug_print_rip_packet(RIPPacket *packet)
 	);
 }
 
-int main(void)
-{
-	char buf[25];
-	RIPPacket p;
-	RIPPacket q;
-
-	p.command = RIP_REQUEST;
-	p.version = RIP_VERSION_2;
-	p.AFI = AF_INET;
-	p.port = 10000;
-	p.next_hop = 1;
-	p.metric = 16;
-
-	rip_packet_encode(buf, &p);
-	printf("%s\n", buf);
-	printf("%d\n", rip_packet_decode(buf, &q));
-
-	debug_print_rip_packet(&q);
-	printf("AF_INET = %d\n", AF_INET);
-	return 0;
-}
