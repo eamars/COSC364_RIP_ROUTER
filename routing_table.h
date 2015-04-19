@@ -1,12 +1,14 @@
 /**
  * Routing table implementation of RIP
  * Active routes
- * -------------------------------------------------
- * | Destination		  Port				Metric |
- * |-----------------------------------------------|
- * |     10				 10011				  8	   |
- * |      8				 10012				  1    |
- * -------------------------------------------------
+ * --------------------------------------------------------
+ * | Destination		  Port		   via		   Metric |
+ * |------------------------------------------------------|
+ * |     10				 10011			1	         8	  |
+ * |      8				 10012			2	         1    |
+ * --------------------------------------------------------
+ *
+ * If via = 0, then it's directly connected
  */
 
 #ifndef ROUTING_TABLE_H
@@ -20,7 +22,7 @@
  * @param port   port of destinated router
  * @param metric cost to router
  */
-void updateTable(int dest, int port, int metric);
+void updateTable(int dest, int port, int via, int metric);
 
 /**
  * returns the cost to router
@@ -35,6 +37,9 @@ int getRouterMetric(int dest);
  * @return      port number
  */
 int getRouterPort(int dest);
+
+int getRouterVia(int dest);
+
 
 /**
  * pretty print the routing table

@@ -1,12 +1,14 @@
 /**
  * Routing table implementation of RIP
  * Active routes
- * -------------------------------------------------
- * | Destination		  Port				Metric |
- * |-----------------------------------------------|
- * |     10				 10011				  8	   |
- * |      8				 10012				  1    |
- * -------------------------------------------------
+ * --------------------------------------------------------
+ * | Destination		  Port		   via		   Metric |
+ * |------------------------------------------------------|
+ * |     10				 10011			1	         8	  |
+ * |      8				 10012			2	         1    |
+ * --------------------------------------------------------
+ *
+ * If via = 0, then it's directly connected
  */
 
 #include <stdio.h>
@@ -18,19 +20,19 @@
 typedef struct route_table_s RTableNode;
 struct route_table_s
 {
-	int row[3];
+	int row[4];
 	RTableNode *left;
 	RTableNode *right;
 };
 
-enum RTABLE {DEST = 0, PORT, METRIC};
+enum RTABLE {DEST = 0, PORT, VIA, METRIC};
 
 // global variable
 RTableNode *routing_table;
 
 
 
-static RTableNode *create_new_node(int dest, int port, int metric)
+static RTableNode *create_new_node(int dest, int port, int via, int metric)
 {
 	// allocate memory for node
 	RTableNode *node = (RTableNode *) malloc (sizeof(RTableNode));
@@ -38,6 +40,7 @@ static RTableNode *create_new_node(int dest, int port, int metric)
 	// copy value
 	node->row[DEST] = dest;
 	node->row[PORT] = port;
+	node->row[VIA] = via;
 	node->row[METRIC] = metric;
 
 	// set left and right to NULL
@@ -48,33 +51,34 @@ static RTableNode *create_new_node(int dest, int port, int metric)
 }
 
 
-static RTableNode *insert(RTableNode *head, int dest, int port, int metric)
+static RTableNode *insert(RTableNode *head, int dest, int port, int via, int metric)
 {
 	// base case: empty list
 	if (head == NULL)
 	{
-		head = create_new_node(dest, port, metric);
+		head = create_new_node(dest, port, via, metric);
 	}
 	else
 	{
 		// all destination must be unique
-		// if not, then update the metric
+		// if not, then update the metric and via
 		if (head->row[DEST] == dest)
 		{
 			if (head->row[METRIC] >= metric)
 			{
+				head->row[VIA] = via;
 				head->row[METRIC] = metric;
 			}
 		}
 		else if (head->row[DEST] > dest)
 		{
 			// insert at left
-			head->left = insert(head->left, dest, port, metric);
+			head->left = insert(head->left, dest, port, via, metric);
 		}
 		else
 		{
 			// insert at right
-			head->right = insert(head->right, dest, port, metric);
+			head->right = insert(head->right, dest, port, via, metric);
 		}
 	}
 	return head;
@@ -95,8 +99,8 @@ static void print_table(RTableNode *head)
 	if (head != NULL)
 	{
 		print_table(head->left);
-		printf("Dest = %d, Port = %d, Metric = %d\n", head->row[DEST],
-			head->row[PORT], head->row[METRIC]);
+		printf("Dest = %d, Port = %d, Via = %d, Metric = %d\n", head->row[DEST],
+			head->row[PORT], head->row[VIA], head->row[METRIC]);
 		print_table(head->right);
 	}
 }
@@ -125,9 +129,9 @@ static int getValue(RTableNode *head, int dest, int selection)
 }
 
 
-void updateTable(int dest, int port, int metric)
+void updateTable(int dest, int port, int via, int metric)
 {
-	routing_table = insert(routing_table, dest, port, metric);
+	routing_table = insert(routing_table, dest, port, via, metric);
 }
 
 int getRouterMetric(int dest)
@@ -140,6 +144,11 @@ int getRouterPort(int dest)
 	return getValue(routing_table, dest, PORT);
 }
 
+int getRouterVia(int dest)
+{
+	return getValue(routing_table, dest, VIA);
+}
+
 void printRoutingTable(void)
 {
 	print_table(routing_table);
@@ -147,7 +156,7 @@ void printRoutingTable(void)
 
 void createRoutingTable(SingleLinkedList list)
 {
-	int dest, port, metric;
+	int dest, port, via, metric;
 
 	for (SingleLinkedList it = list; it != NULL; it = getNext(it))
 	{
@@ -166,9 +175,11 @@ void createRoutingTable(SingleLinkedList list)
 
 		port = atoi(temp->string);
 
+		via = 0;
+
 		destroyList(table);
 
-		updateTable(dest, port, metric);
+		updateTable(dest, port, via, metric);
 	}
 }
 
