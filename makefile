@@ -4,7 +4,7 @@
 
 # Define compilers and other flags
 CC = cc
-CFLAGS = -Os -Wall -Wstrict-prototypes -Wextra -g -std=c99 -D_XOPEN_SOURCE
+CFLAGS = -Os -Wall -Wstrict-prototypes -Wextra -Wno-unneeded-internal-declaration -g -std=c99 -D_XOPEN_SOURCE
 LIBS =
 DEL = rm
 
@@ -23,14 +23,18 @@ list.o: list.c list.h
 pidlock.o: pidlock.c pidlock.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
-router_demon.o: router_demon.c routing_table.h
+router_demon.o: router_demon.c routing_table.h rip_message.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
 routing_table.o: routing_table.c routing_table.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
+rip_message.o: rip_message.c rip_message.h
+	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
+
 # Link
-router.out: router.o config.o list.o pidlock.o router_demon.o routing_table.o
+router.out: router.o config.o list.o pidlock.o router_demon.o routing_table.o \
+		rip_message.o
 	$(CC) $(CFLAGS) $(LIBS) $^ -o $@
 
 .PHONY: clean
