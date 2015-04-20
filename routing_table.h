@@ -63,4 +63,17 @@ void createRoutingTable(SingleLinkedList list);
  */
 void destroyRoutingTable(void);
 
+/**
+ * get all entries of destinations
+ * @param  routers input buffer
+ * @return         number of entries
+ */
+int getAllRouters(int *routers);
+
+/**
+ * get the number of entries in routing table
+ * @return  [description]
+ */
+int getNumEntry(void);
+
 #endif
