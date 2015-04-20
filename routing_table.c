@@ -187,3 +187,45 @@ void destroyRoutingTable(void)
 {
 	free_nodes(routing_table);
 }
+
+int get_routers_dest(RTableNode *head, int *routers)
+{
+	static int index = 0;
+	int count = 0;
+
+	if (head != NULL)
+	{
+		count += get_routers_dest(head->left, routers);
+		routers[index] = head->row[0];
+		routers[++index] = -1;
+		count++;
+
+		count += get_routers_dest(head->right, routers);
+	}
+
+	return count;
+}
+
+int getAllRouters(int *routers)
+{
+	return get_routers_dest(routing_table, routers);
+}
+
+int get_num_of_entry_in_rtable(RTableNode *head)
+{
+	int count = 0;
+
+	if (head != NULL)
+	{
+		count += get_num_of_entry_in_rtable(head->left);
+		count++;
+		count += get_num_of_entry_in_rtable(head->right);
+	}
+
+	return count;
+}
+
+int getNumEntry(void)
+{
+	return get_num_of_entry_in_rtable(routing_table);
+}
