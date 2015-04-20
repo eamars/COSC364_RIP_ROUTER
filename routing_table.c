@@ -64,7 +64,7 @@ static RTableNode *insert(RTableNode *head, int dest, int port, int via, int met
 		// if not, then update the metric and via
 		if (head->row[DEST] == dest)
 		{
-			if (head->row[METRIC] >= metric)
+			if (head->row[METRIC] > metric)
 			{
 				head->row[VIA] = via;
 				head->row[METRIC] = metric;
