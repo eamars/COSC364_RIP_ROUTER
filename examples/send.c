@@ -41,6 +41,7 @@ int main(int argc, char **argv)
 		printf("Failed to send\n");
 		return -3;
 	}
+	printf("send: [%s]\n", message);
 
 	// recv from remote
 	char reply[10240];
@@ -50,7 +51,7 @@ int main(int argc, char **argv)
 		return -4;
 	}
 
-	printf("%s\n", reply);
+	printf("recv: [%s]\n", reply);
 
 	close(socket_fd);
 
