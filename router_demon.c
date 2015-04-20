@@ -11,13 +11,15 @@
 
 #include "list.h"
 #include "routing_table.h"
+#include "rip_message.h"
+#include "pidlock.h"
 
 // global variable
 extern int router_id;
 extern char input_ports[512];
 extern char output_dest[512];
 
-#define BUF_SZ 4096
+#define BUF_SZ 64
 
 int make_socket(int port)
 {
@@ -28,6 +30,7 @@ int make_socket(int port)
 	if (sock < 0)
 	{
 		perror("Unable to create socket");
+		remove_pid(router_id);
 		exit(-1);
 	}
 
@@ -37,6 +40,7 @@ int make_socket(int port)
 	if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0)
 	{
 		perror("Failed to bind socket");
+		remove_pid(router_id);
 		exit(-1);
 	}
 	return sock;
@@ -63,7 +67,29 @@ int read_from_client (int filedes)
 	else
 	{
 		/* Data read. */
-		printf("Router%d: %s\n", router_id, buffer);
+		RIPPacket p;
+		printf("Router%d: [%s]\n", router_id, buffer);
+
+		// if successfully read from input ports, then parse the
+		// rip packet and add necessary information to routing
+		// table
+		if (!rip_packet_decode(buffer, &p))
+		{
+			debug_print_rip_packet(&p);
+			printRoutingTable();
+			if (p.command == RIP_REQUEST)
+			{
+				// request
+				// send back routing table
+			}
+			else if (p.command == RIP_RESPONSE)
+			{
+				// response
+				// update routing table
+			}
+			printRoutingTable();
+
+		}
 		return 0;
 	}
 }
@@ -116,6 +142,7 @@ int router_demon_start(void)
 		if (listen(fds[i], 1) < 0)
 		{
 			perror("Failed to listen");
+			remove_pid(router_id);
 			exit(-1);
 		}
 	}
@@ -138,6 +165,7 @@ int router_demon_start(void)
 		if (select(FD_SETSIZE, &readset, NULL, NULL, NULL) < 0)
 		{
 			perror("Failed to select");
+			remove_pid(router_id);
 			exit(-1);
 		}
 
@@ -156,6 +184,7 @@ int router_demon_start(void)
 		if (client_fd < 0)
 		{
 			perror("Failed to accept");
+			remove_pid(router_id);
 			continue;
 		}
 
@@ -164,14 +193,13 @@ int router_demon_start(void)
 		if ((pid = fork()) < 0)
 		{
 			perror("Failed to fork");
+			remove_pid(router_id);
 			exit(-1);
 		}
 		else if (pid == 0)
 		{
 			// read from remove client
 			read_from_client(client_fd);
-			printf("Router%d: connect from host %s, port %hd.\n", router_id, inet_ntoa (clientname.sin_addr), ntohs (clientname.sin_port));
-
 
 			// close(client_fd);
 			exit(0);
