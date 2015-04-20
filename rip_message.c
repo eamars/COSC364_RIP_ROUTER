@@ -4,59 +4,90 @@
 #include <sys/socket.h>
 #include "rip_message.h"
 
-static const char *RIP_PACKET_FORMAT = "%01x%01x00%02x00%04x0000%04x%04x";
+static const char *RIP_PACKET_FORMAT_HEADER = "%01d%01d00";
+static const char *RIP_PACKET_FORMAT_ENTRY = "%02d00%04d0000%04d%04d";
 
 int rip_packet_decode(char *message, RIPPacket *packet)
 {
-	int recv_count;
+	char buf[20];
 
-	if (strlen(message) != 24)
+	int len = strlen(message);
+
+	if ((len - 4) % 20 != 0)
 	{
+		// unknown length
 		return -1;
 	}
 
-	recv_count = sscanf(message, RIP_PACKET_FORMAT,
+	int n_entry = (len - 4) / 20;
+
+	packet->n_entry = n_entry;
+
+	memcpy(buf, message, 4);
+
+	sscanf(buf, RIP_PACKET_FORMAT_HEADER,
 		&packet->command,
-		&packet->version,
-		&packet->AFI,
-		&packet->address,
-		&packet->next_hop,
-		&packet->metric
+		&packet->version
 	);
 
-	// check if metric <= 16
-	if (packet->metric > 16)
+	for (int i = 0; i < n_entry; i++)
 	{
-		return -2;
+		memcpy(buf, message + 20 * i + 4, 20);
+		sscanf(buf, RIP_PACKET_FORMAT_ENTRY,
+			&packet->entry[i].AFI,
+			&packet->entry[i].address,
+			&packet->entry[i].next_hop,
+			&packet->entry[i].metric
+		);
+		if (packet->entry[i].metric < 1 || packet->entry[i].metric > 16)
+		{
+			// bad metric
+			return -2;
+		}
 	}
 
-	return recv_count != 6;
+	return 0;
 }
 
 
 int rip_packet_encode(char *message, RIPPacket *packet)
 {
-	sprintf(message, RIP_PACKET_FORMAT,
+	char buf[20];
+
+	sprintf(message, RIP_PACKET_FORMAT_HEADER,
 		packet->command,
-		packet->version,
-		packet->AFI,
-		packet->address,
-		packet->next_hop,
-		packet->metric
+		packet->version
 	);
+	for (unsigned int i = 0; i < packet->n_entry; i++)
+	{
+		sprintf(buf, RIP_PACKET_FORMAT_ENTRY,
+			packet->entry[i].AFI,
+			packet->entry[i].address,
+			packet->entry[i].next_hop,
+			packet->entry[i].metric
+		);
+		strcat(message, buf);
+
+	}
 
 	return 0;
 }
 
-void debug_print_rip_packet(RIPPacket *packet)
+void debug_print_rip_packet(const RIPPacket *packet)
 {
-	printf("command = %d\nversion = %d\nAFI = %d\naddress = %d\nnext_hop = %d\nmetric = %d\n",
+	printf("command = %d\nversion = %d\n",
 		packet->command,
-		packet->version,
-		packet->AFI,
-		packet->address,
-		packet->next_hop,
-		packet->metric
+		packet->version
 	);
+	for (unsigned int i = 0; i < packet->n_entry; i++)
+	{
+		printf("Entry[%d]\n	AFI = %d\n	address = %d\n	next_hop = %d\n	metric = %d\n",
+			i,
+			packet->entry[i].AFI,
+			packet->entry[i].address,
+			packet->entry[i].next_hop,
+			packet->entry[i].metric
+		);
+	}
 }
 

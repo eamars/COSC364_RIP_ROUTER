@@ -29,14 +29,23 @@
 #define RIP_VERSION_1 1
 #define RIP_VERSION_2 2
 
-typedef struct rip_packet_s
+#define MAX_RIP_ENTRY 25
+
+typedef struct rip_entry_s
 {
-	unsigned int command;
-	unsigned int version;
 	unsigned int AFI;
 	unsigned int address;
 	unsigned int next_hop;
 	unsigned int metric;
+} RIPEntry;
+
+typedef struct rip_packet_s
+{
+	unsigned int command;
+	unsigned int version;
+	unsigned int n_entry;
+	RIPEntry entry[MAX_RIP_ENTRY];
+
 } RIPPacket;
 
 /**
@@ -59,7 +68,7 @@ int rip_packet_encode(char *message, RIPPacket *packet);
  * debug print rip packet
  * @param packet input rip packet
  */
-void debug_print_rip_packet(RIPPacket *packet);
+void debug_print_rip_packet(const RIPPacket *packet);
 
 
 #endif
