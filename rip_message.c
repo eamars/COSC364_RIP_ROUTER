@@ -17,7 +17,7 @@ int rip_packet_decode(char *message, RIPPacket *packet)
 		&packet->command,
 		&packet->version,
 		&packet->AFI,
-		&packet->port,
+		&packet->address,
 		&packet->next_hop,
 		&packet->metric
 	) != 6;
@@ -30,7 +30,7 @@ int rip_packet_encode(char *message, RIPPacket *packet)
 		packet->command,
 		packet->version,
 		packet->AFI,
-		packet->port,
+		packet->address,
 		packet->next_hop,
 		packet->metric
 	);
@@ -40,11 +40,11 @@ int rip_packet_encode(char *message, RIPPacket *packet)
 
 void debug_print_rip_packet(RIPPacket *packet)
 {
-	printf("command = %d\nversion = %d\nAFI = %d\nport = %d\nnext_hop = %d\nmetric = %d\n",
+	printf("command = %d\nversion = %d\nAFI = %d\naddress = %d\nnext_hop = %d\nmetric = %d\n",
 		packet->command,
 		packet->version,
 		packet->AFI,
-		packet->port,
+		packet->address,
 		packet->next_hop,
 		packet->metric
 	);

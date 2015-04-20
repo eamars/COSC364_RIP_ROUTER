@@ -18,7 +18,8 @@
 // command: 1 for request, 2 for response
 // version: 1 for RIP-1, 2 for RIP-2
 // address family identifier: AF_INET
-// IPv4 address: we use port number instead
+// IPv4 address: router_id
+// next_hop: via
 
 #ifndef RIP_MESSAGE_H_
 #define RIP_MESSAGE_H_
@@ -33,7 +34,7 @@ typedef struct rip_packet_s
 	unsigned int command;
 	unsigned int version;
 	unsigned int AFI;
-	unsigned int port;
+	unsigned int address;
 	unsigned int next_hop;
 	unsigned int metric;
 } RIPPacket;
