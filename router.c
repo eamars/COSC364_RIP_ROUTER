@@ -19,7 +19,7 @@
 
 // global variables
 static const char *usage = "Usage: router.out [\x1B[32mstart\033[0m|\x1B[32mstop\033[0m] router.cfg";
-int router_id;
+unsigned int router_id;
 char input_ports[512];
 char output_dest[512];
 
