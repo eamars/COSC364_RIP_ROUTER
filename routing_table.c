@@ -1,22 +1,9 @@
-/**
- * Routing table implementation of RIP
- * Active routes
- * --------------------------------------------------------
- * | Destination		  Port		   via		   Metric |
- * |------------------------------------------------------|
- * |     10				 10011			1	         8	  |
- * |      8				 10012			2	         1    |
- * --------------------------------------------------------
- *
- * If via = 0, then it's directly connected
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include "routing_table.h"
 #include "list.h"
 
-// sort with respect to destination
+
 typedef struct route_table_s RTableNode;
 struct route_table_s
 {
@@ -25,25 +12,20 @@ struct route_table_s
 	RTableNode *right;
 };
 
-enum RTABLE {DEST = 0, PORT, VIA, METRIC};
-
 // global variable
 RTableNode *routing_table;
 
-
-
-static RTableNode *create_new_node(int dest, int port, int via, int metric)
+static RTableNode *create_new_node(int next_hop, int port, int addr, int metric)
 {
 	// allocate memory for node
 	RTableNode *node = (RTableNode *) malloc (sizeof(RTableNode));
 
-	// copy value
-	node->row[DEST] = dest;
+	// copy variable
+	node->row[NEXT_HOP] = next_hop;
 	node->row[PORT] = port;
-	node->row[VIA] = via;
+	node->row[ADDR] = addr;
 	node->row[METRIC] = metric;
 
-	// set left and right to NULL
 	node->left = NULL;
 	node->right = NULL;
 
@@ -51,36 +33,37 @@ static RTableNode *create_new_node(int dest, int port, int via, int metric)
 }
 
 
-static RTableNode *insert(RTableNode *head, int dest, int port, int via, int metric)
+static RTableNode *insert (RTableNode *head, int next_hop, int port, int addr, int metric)
 {
-	// base case: empty list
 	if (head == NULL)
 	{
-		head = create_new_node(dest, port, via, metric);
+
+		head = create_new_node(next_hop, port, addr, metric);
 	}
 	else
 	{
-		// all destination must be unique
-		// if not, then update the metric and via
-		if (head->row[DEST] == dest)
+		// next_hop is unique
+		if (head->row[NEXT_HOP] == next_hop)
 		{
+			// update the metric and addr if old metric > new_metric
 			if (head->row[METRIC] > metric)
 			{
-				head->row[VIA] = via;
+				head->row[ADDR] = addr;
 				head->row[METRIC] = metric;
 			}
 		}
-		else if (head->row[DEST] > dest)
+		else if (head->row[NEXT_HOP] > next_hop)
 		{
 			// insert at left
-			head->left = insert(head->left, dest, port, via, metric);
+			head->left = insert(head->left, next_hop, port, addr, metric);
 		}
 		else
 		{
 			// insert at right
-			head->right = insert(head->right, dest, port, via, metric);
+			head->right = insert(head->right, next_hop, port, addr, metric);
 		}
 	}
+
 	return head;
 }
 
@@ -99,13 +82,17 @@ static void print_table(RTableNode *head)
 	if (head != NULL)
 	{
 		print_table(head->left);
-		printf("Dest = %d, Port = %d, Via = %d, Metric = %d\n", head->row[DEST],
-			head->row[PORT], head->row[VIA], head->row[METRIC]);
+		printf("NEXT_HOP = %d, PORT = %d, ADDR = %d, METRIC = %d\n",
+			head->row[NEXT_HOP],
+			head->row[PORT],
+			head->row[ADDR],
+			head->row[METRIC]
+		);
 		print_table(head->right);
 	}
 }
 
-static int getValue(RTableNode *head, int dest, int selection)
+static int getValue_helper(RTableNode *head, int next_hop, int selection)
 {
 	if (head == NULL)
 	{
@@ -113,113 +100,97 @@ static int getValue(RTableNode *head, int dest, int selection)
 	}
 	else
 	{
-		if (head->row[DEST] == dest)
+		if (head->row[NEXT_HOP] == next_hop)
 		{
 			return head->row[selection];
 		}
-		if (head->row[DEST] > dest)
+		else if (head->row[NEXT_HOP] > next_hop)
 		{
-			return getValue(head->left, dest, selection);
+			return getValue_helper(head->left, next_hop, selection);
 		}
 		else
 		{
-			return getValue(head->right, dest, selection);
+			return getValue_helper(head->right, next_hop, selection);
 		}
 	}
 }
 
-
-void updateTable(int dest, int port, int via, int metric)
+int getValue(int next_hop, int selection)
 {
-	routing_table = insert(routing_table, dest, port, via, metric);
+	return getValue_helper(routing_table, next_hop, selection);
 }
 
-int getRouterMetric(int dest)
+void updateTable(int next_hop, int port, int addr, int metric)
 {
-	return getValue(routing_table, dest, METRIC);
+	routing_table = insert(routing_table, next_hop, port, addr, metric);
 }
 
-int getRouterPort(int dest)
-{
-	return getValue(routing_table, dest, PORT);
-}
 
-int getRouterVia(int dest)
+void createRoutingTableFromConfig(SingleLinkedList list)
 {
-	return getValue(routing_table, dest, VIA);
-}
-
-void printRoutingTable(void)
-{
-	print_table(routing_table);
-}
-
-void createRoutingTable(SingleLinkedList list)
-{
-	int dest, port, via, metric;
+	int next_hop, port, addr, metric;
 
 	for (SingleLinkedList it = list; it != NULL; it = getNext(it))
 	{
-		SingleLinkedList table, temp;
-		table = split(it->string, '-');
 
-		temp = table;
+		SingleLinkedList splited_string, temp;
+		splited_string = split(it->string, '-');
 
-		dest = atoi(temp->string);
-
+		// addr
+		temp = splited_string;
+		addr = atoi(temp->string);
 		temp = getNext(temp);
 
+		// metric
 		metric = atoi(temp->string);
-
 		temp = getNext(temp);
 
+		// port
 		port = atoi(temp->string);
+		temp = getNext(temp);
 
-		via = 0;
+		// next_hop
+		next_hop = addr;
 
-		destroyList(table);
+		destroyList(splited_string);
 
-		updateTable(dest, port, via, metric);
+		updateTable(next_hop, port, addr, metric);
+
 	}
 }
 
-void destroyRoutingTable(void)
-{
-	free_nodes(routing_table);
-}
-
-int get_routers_dest(RTableNode *head, int *routers)
+static int getAllHops_helper(RTableNode *head, int *hops)
 {
 	static int index = 0;
 	int count = 0;
 
 	if (head != NULL)
 	{
-		count += get_routers_dest(head->left, routers);
-		routers[index] = head->row[0];
-		routers[++index] = -1;
+		count += getAllHops_helper(head->left, hops);
+		hops[index] = head->row[NEXT_HOP];
+		hops[++index] = -1;
 		count++;
 
-		count += get_routers_dest(head->right, routers);
+		count += getAllHops_helper(head->right, hops);
 	}
 
 	return count;
 }
 
-int getAllRouters(int *routers)
+int getAllHops(int *hops)
 {
-	return get_routers_dest(routing_table, routers);
+	return getAllHops_helper(routing_table, hops);
 }
 
-int get_num_of_entry_in_rtable(RTableNode *head)
+int getNumEntry_helper(RTableNode *head)
 {
 	int count = 0;
 
 	if (head != NULL)
 	{
-		count += get_num_of_entry_in_rtable(head->left);
+		count += getNumEntry_helper(head->left);
 		count++;
-		count += get_num_of_entry_in_rtable(head->right);
+		count += getNumEntry_helper(head->right);
 	}
 
 	return count;
@@ -227,5 +198,17 @@ int get_num_of_entry_in_rtable(RTableNode *head)
 
 int getNumEntry(void)
 {
-	return get_num_of_entry_in_rtable(routing_table);
+	return getNumEntry_helper(routing_table);
+}
+
+
+void printRoutingTable(void)
+{
+	print_table(routing_table);
+}
+
+
+void destroyRoutingTable(void)
+{
+	free_nodes(routing_table);
 }
