@@ -124,6 +124,7 @@ int update_table(char *buffer)
 	printRoutingTable();
 	for (unsigned int i = 0; i < packet.n_entry; i++)
 	{
+		// split horizon enabled here
 		if (packet.entry[i].next_hop == router_id)
 		{
 			continue;
