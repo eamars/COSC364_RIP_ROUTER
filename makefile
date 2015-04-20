@@ -8,6 +8,7 @@ CFLAGS = -Os -Wall -Wstrict-prototypes -Wextra -Wno-unneeded-internal-declaratio
 LIBS =
 DEL = rm
 
+
 all: router.out
 
 # Compile
@@ -31,6 +32,7 @@ routing_table.o: routing_table.c routing_table.h
 
 rip_message.o: rip_message.c rip_message.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
+
 
 # Link
 router.out: router.o config.o list.o pidlock.o router_demon.o routing_table.o \
