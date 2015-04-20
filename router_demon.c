@@ -15,18 +15,18 @@
 #include "pidlock.h"
 
 // global variable
-extern int router_id;
+extern unsigned int router_id;
 extern char input_ports[512];
 extern char output_dest[512];
 
-#define BUF_SZ 64
+#define BUF_SZ 504 // max size for rip header + 25 * entry
 
 int make_socket(int port)
 {
 	int sock;
 	struct sockaddr_in name;
 
-	sock = socket(AF_INET, SOCK_STREAM, 0);
+	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); // use udp
 	if (sock < 0)
 	{
 		perror("Unable to create socket");
@@ -47,82 +47,138 @@ int make_socket(int port)
 
 }
 
-int read_from_client (int filedes)
+int make_response(char *buf)
 {
-	char buffer[BUF_SZ];
-	int nbytes;
+	// send routing tables to filedes (without split-horizon)
+	RIPPacket p;
 
-	nbytes = read (filedes, buffer, BUF_SZ);
-	if (nbytes < 0)
+	int n = getNumEntry();
+	int hops[n];
+
+	// make rip packet
+	p.command = RIP_RESPONSE;
+	p.version = RIP_VERSION_2;
+	p.n_entry = n;
+
+	// prepare for send buffer
+	int send_size = 4 + n * 20;
+
+	// get router hops
+	// without split horizon
+	getAllHops(hops);
+	for (int i = 0; i < n; i++)
 	{
-		/* Read error. */
-		perror ("Failed to read");
-		exit (-1);
+		p.entry[i].AFI = AF_INET;
+		p.entry[i].address = router_id;
+		p.entry[i].next_hop = hops[i];
+		p.entry[i].metric = getValue(hops[i], METRIC);
 	}
-	else if (nbytes == 0)
-	/* End-of-file. */
+
+	// form raw string
+	rip_packet_encode(buf, &p);
+
+	return send_size;
+}
+
+int send_response(char *buf, int send_size, int sender_port)
+{
+	struct sockaddr_in sock;
+	int sock_fd;
+
+
+	sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (sock_fd < 0)
 	{
 		return -1;
 	}
+
+	sock.sin_addr.s_addr = htonl (INADDR_ANY);
+	sock.sin_family = AF_INET;
+	sock.sin_port = htons(sender_port);
+
+	if (sendto(sock_fd, buf, send_size, 0, (struct sockaddr *)&sock, sizeof(sock)) < 0)
+	{
+		return -3;
+	}
+	close(sock_fd);
+
+	return 0;
+}
+
+int get_sender(char *buf)
+{
+	RIPPacket packet;
+	rip_packet_decode(buf, &packet);
+
+
+	return getValue(packet.entry[0].address, PORT);
+}
+
+int update_table(char *buffer)
+{
+	RIPPacket packet;
+	rip_packet_decode(buffer, &packet);
+
+	printf("Router%d\n", router_id);
+	printf ("Before: \n");
+	printRoutingTable();
+	for (unsigned int i = 0; i < packet.n_entry; i++)
+	{
+		if (packet.entry[i].next_hop == router_id)
+		{
+			continue;
+		}
+		updateTable(
+			packet.entry[i].next_hop,
+			0,
+			packet.entry[i].address,
+			packet.entry[i].metric + getValue(packet.entry[i].address, METRIC)
+		);
+	}
+	printf ("After: \n");
+	printRoutingTable();
+	return 0;
+}
+
+int process_message(char *buffer)
+{
+	int ret;
+
+	RIPPacket p;
+
+	// if successfully read from input ports, then parse the
+	// rip packet and add necessary information to routing
+	// table
+	if ((ret = rip_packet_decode(buffer, &p)) == 0)
+	{
+		return p.command;
+	}
 	else
 	{
-		/* Data read. */
-		RIPPacket p;
-		printf("Router%d: [%s]\n", router_id, buffer);
-
-		// if successfully read from input ports, then parse the
-		// rip packet and add necessary information to routing
-		// table
-		if (!rip_packet_decode(buffer, &p))
-		{
-			debug_print_rip_packet(&p);
-			printRoutingTable();
-			if (p.command == RIP_REQUEST)
-			{
-				// request
-				// send back routing table
-			}
-			else if (p.command == RIP_RESPONSE)
-			{
-				// response
-				// update routing table
-			}
-			printRoutingTable();
-
-		}
-		return 0;
+		printf("Unable to parse[%d]\n", ret);
 	}
+
+	return -1;
 }
+
 
 
 int router_demon_start(void)
 {
-	SingleLinkedList inputs = split(input_ports, ',');
-	SingleLinkedList outputs = split(output_dest, ',');
-	int n_inputs = getLength(inputs);
-	int input_port_numbers[n_inputs];
+	/* Initilize */
 	int i;
 
-	// fds: file descriptor for listening ports
-	// server_fd: file descriptor that is ready to read
-	// client_fd: accepted connection
-	int fds[n_inputs], server_fd, client_fd;
+	// read and load listening ports from config file
+	SingleLinkedList inputs = split(input_ports, ',');
 
-	// file descriptor set
-	fd_set readset;
-	int c = sizeof(struct sockaddr_in);
+	// read and load adjacent hops from config file
+	SingleLinkedList outputs = split(output_dest, ',');
 
+	// get the number of input ports
+	int n_inputs = getLength(inputs);
 
-	// client socket
-	struct sockaddr_in clientname;
-
-	int pid;
-
-	// create and print routing tables
-	createRoutingTable(outputs);
-	printRoutingTable();
-
-	// get input port numbers
+	// create a array to store these ports
+	int input_port_numbers[n_inputs];
 	i = 0;
 	for (SingleLinkedList it = inputs; it != NULL; it = getNext(it))
 	{
@@ -130,22 +186,48 @@ int router_demon_start(void)
 		i++;
 	}
 
+	// index
 
 
-	// create sockets
+	// fds: file descriptor for listening ports
+	// server_fd: file descriptor that is ready to read
+	// client_fd: accepted connection
+	int fds[n_inputs], server_fd;
+
+	// file descriptor set
+	fd_set readset;
+
+	// size of sockaddr_in struct
+	socklen_t len;
+
+
+	// client socket
+	struct sockaddr_in clientname;
+
+	int pid;
+	int ret;
+	char buffer[BUF_SZ]; // raw buffer
+
+	/* Process */
+
+	// create the initial routing with only adjacent routers
+	createRoutingTableFromConfig(outputs);
+	printRoutingTable();
+
+	// free the memory allocated by input and output
+	destroyList(inputs);
+	destroyList(outputs);
+
+
+
+	// create sockets for each of these input ports
 	for (i = 0; i < n_inputs; i++)
 	{
 		// create and bind port number to local machine
 		fds[i] = make_socket(input_port_numbers[i]);
 
-		// listen to ports
-		if (listen(fds[i], 1) < 0)
-		{
-			perror("Failed to listen");
-			remove_pid(router_id);
-			exit(-1);
-		}
 	}
+
 	// clear the read set
 	FD_ZERO(&readset);
 
@@ -179,13 +261,13 @@ int router_demon_start(void)
 			}
 		}
 
-		// accept incoming connection
-		client_fd = accept(server_fd, (struct sockaddr *)&clientname, (socklen_t *)&c);
-		if (client_fd < 0)
+		// udp receive
+		memset(buffer, 0, sizeof(buffer));
+		if (recvfrom(server_fd, buffer, BUF_SZ, 0, (struct sockaddr *)&clientname, &len) < 0)
 		{
-			perror("Failed to accept");
+			perror("Failed to receive");
 			remove_pid(router_id);
-			continue;
+			exit(-1);
 		}
 
 		// if one connection take too long to process, we
@@ -198,15 +280,41 @@ int router_demon_start(void)
 		}
 		else if (pid == 0)
 		{
-			// read from remove client
-			read_from_client(client_fd);
+
+			ret = process_message(buffer);
+			if (ret == RIP_REQUEST)
+			{
+				int send_size;
+				int sender_port;
+
+				if ((sender_port = get_sender(buffer)) < 0)
+				{
+					printf("Unable to find sender\n");
+					exit(-1);
+				}
+
+				send_size = make_response(buffer);
+
+				if ((ret = send_response(buffer, send_size, sender_port)) != 0)
+				{
+					perror("Failed to send");
+					exit(-1);
+				}
+
+
+			}
+			else if (ret == RIP_RESPONSE)
+			{
+				update_table(buffer);
+			}
+
 
 			// close(client_fd);
 			exit(0);
 		}
 		else
 		{
-			close(client_fd);
+			// close(client_fd);
 		}
 
 	}
@@ -214,7 +322,5 @@ int router_demon_start(void)
 
 	destroyRoutingTable();
 
-	destroyList(inputs);
-	destroyList(outputs);
 	return 0;
 }
