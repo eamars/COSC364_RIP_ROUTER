@@ -33,3 +33,6 @@ bject files
 
 # Ignore pid file
 *.pid
+
+# Ignore the log file
+*.log
