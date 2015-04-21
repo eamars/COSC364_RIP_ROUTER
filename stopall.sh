@@ -1,5 +1,4 @@
 #!/bin/bash
-make all
 ./router.out stop routers/router1.cfg
 ./router.out stop routers/router2.cfg
 ./router.out stop routers/router3.cfg
