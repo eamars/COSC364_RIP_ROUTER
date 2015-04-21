@@ -31,14 +31,18 @@
 
 #include "list.h"
 
+
 enum RTABLE {NEXT_HOP = 0, PORT, ADDR, METRIC};
 
 void createRoutingTableFromConfig(SingleLinkedList list);
 void updateTable(int next_hop, int port, int addr, int metric);
-int getAllHops(int *hops);
+void getAllHops(int *hops);
 int getNumEntry(void);
 int getValue(int next_hop, int selection);
 void destroyRoutingTable(void);
 void printRoutingTable(void);
+
+int getTimeoutHops(int *hops);
+void timeoutUpdate(void);
 
 #endif

@@ -10,10 +10,20 @@ struct route_table_s
 	int row[4];
 	RTableNode *left;
 	RTableNode *right;
+	int state;
+
+	int active_timeout; // time to set deactive
+	int garbage_timeout; // time to remove
 };
+
+enum TSTATE {NORMAL = 0, DEACTIVED};
 
 // global variable
 RTableNode *routing_table;
+
+extern const int DEACTIVE_TIME;
+extern const int GARBAGE_COLLECTION_TIME;
+extern unsigned router_id;
 
 static RTableNode *create_new_node(int next_hop, int port, int addr, int metric)
 {
@@ -29,6 +39,11 @@ static RTableNode *create_new_node(int next_hop, int port, int addr, int metric)
 	node->left = NULL;
 	node->right = NULL;
 
+	node->state = NORMAL;
+
+	node->active_timeout = 0; // newly created or updated
+	node->garbage_timeout = 0;
+
 	return node;
 }
 
@@ -37,21 +52,56 @@ static RTableNode *insert (RTableNode *head, int next_hop, int port, int addr, i
 {
 	if (head == NULL)
 	{
-
 		head = create_new_node(next_hop, port, addr, metric);
 	}
 	else
 	{
+		// printf("UPDATE: %d %d %d %d\n", next_hop, port, addr, metric);
 		// next_hop is unique
+		// update if duplicated
 		if (head->row[NEXT_HOP] == next_hop)
 		{
-			// update the metric and addr if old metric > new_metric
-			if (head->row[METRIC] > metric)
+
+			if (head->state == NORMAL)
 			{
-				head->row[ADDR] = addr;
-				head->row[METRIC] = metric;
+				// update the metric and addr if old metric > new_metric
+				// or metric == 16
+				if (metric + head->row[METRIC] >= 16)
+				{
+					head->row[ADDR] = addr;
+					head->row[METRIC] = 16;
+					head->state = DEACTIVED;
+				}
+				else if (head->row[METRIC] > metric)
+				{
+					head->row[ADDR] = addr;
+					head->row[METRIC] = metric;
+				}
+				head->active_timeout = 0; // reset
+				head->garbage_timeout = 0;
 			}
+
+			else if (head->state == DEACTIVED)
+			{
+				if (metric >= 16)
+				{
+
+				}
+				else if (head->row[METRIC] > metric)
+				{
+					head->row[ADDR] = addr;
+					head->row[METRIC] = metric;
+					head->state = NORMAL;
+
+					head->active_timeout = 0; // reset
+					head->garbage_timeout = 0;
+				}
+
+			}
+
+
 		}
+
 		else if (head->row[NEXT_HOP] > next_hop)
 		{
 			// insert at left
@@ -82,11 +132,14 @@ static void print_table(RTableNode *head)
 	if (head != NULL)
 	{
 		print_table(head->left);
-		printf("NEXT_HOP = %d, PORT = %d, ADDR = %d, METRIC = %d\n",
+		printf("NEXT_HOP = %d, PORT = %d, ADDR = %d, METRIC = %d, AT = %d, GT = %d, STATE = %d\n",
 			head->row[NEXT_HOP],
 			head->row[PORT],
 			head->row[ADDR],
-			head->row[METRIC]
+			head->row[METRIC],
+			head->active_timeout,
+			head->garbage_timeout,
+			head->state
 		);
 		print_table(head->right);
 	}
@@ -155,42 +208,35 @@ void createRoutingTableFromConfig(SingleLinkedList list)
 		destroyList(splited_string);
 
 		updateTable(next_hop, port, addr, metric);
-
 	}
+
 }
 
-static int getAllHops_helper(RTableNode *head, int *hops)
+void getAllHops_helper(RTableNode *head, int *hops, int index)
 {
-	static int index = 0;
-	int count = 0;
-
 	if (head != NULL)
 	{
-		count += getAllHops_helper(head->left, hops);
 		hops[index] = head->row[NEXT_HOP];
-		hops[++index] = -1;
-		count++;
+		hops[index + 1] = -1;
+		getAllHops_helper(head->left, hops, index + 1);
+		getAllHops_helper(head->right, hops, index + 2);
 
-		count += getAllHops_helper(head->right, hops);
 	}
 
-	return count;
 }
 
-int getAllHops(int *hops)
+void getAllHops(int *hops)
 {
-	return getAllHops_helper(routing_table, hops);
+	getAllHops_helper(routing_table, hops, 0);
 }
 
-int getNumEntry_helper(RTableNode *head)
+static int getNumEntry_helper(RTableNode *head)
 {
 	int count = 0;
 
 	if (head != NULL)
 	{
-		count += getNumEntry_helper(head->left);
-		count++;
-		count += getNumEntry_helper(head->right);
+		count = 1 + getNumEntry_helper(head->left) + getNumEntry_helper(head->right);
 	}
 
 	return count;
@@ -212,3 +258,37 @@ void destroyRoutingTable(void)
 {
 	free_nodes(routing_table);
 }
+
+static RTableNode *timeoutUpdate_helper(RTableNode *head)
+{
+	if (head != NULL)
+	{
+		head->left = timeoutUpdate_helper(head->left);
+		if (head->row[PORT] != 0)
+		{
+			if (head->state == NORMAL)
+			{
+				head->active_timeout += 1;
+			}
+			else if (head->state == DEACTIVED)
+			{
+				head->garbage_timeout += 1;
+			}
+
+		}
+		if (head->active_timeout > DEACTIVE_TIME)
+		{
+			head->active_timeout = 0;
+			head->row[METRIC] = 16;
+			head->state = DEACTIVED;
+		}
+		head->right = timeoutUpdate_helper(head->right);
+	}
+	return head;
+}
+
+void timeoutUpdate(void)
+{
+	timeoutUpdate_helper(routing_table);
+}
+
