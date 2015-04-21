@@ -125,14 +125,14 @@ int main(int argc, char **argv)
 
 		char buf[504];
 		RIPPacket p;
-		p.command = RIP_REQUEST;
+		p.command = RIP_RESPONSE;
 		p.version = RIP_VERSION_2;
 		p.n_entry = 1;
 
 		p.entry[0].AFI = AF_INET;
-		p.entry[0].address = 3;
-		p.entry[0].next_hop = 0;
-		p.entry[0].metric = 16;
+		p.entry[0].address = 2;
+		p.entry[0].next_hop = 2;
+		p.entry[0].metric = 1;
 
 		rip_packet_encode(buf, &p);
 		printf("raw: %s\n", buf);
