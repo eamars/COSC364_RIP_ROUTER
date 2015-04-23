@@ -9,7 +9,7 @@ static const char *RIP_PACKET_FORMAT_ENTRY = "%02d00%04d0000%04d%04d";
 
 int rip_packet_decode(char *message, RIPPacket *packet)
 {
-	char buf[20];
+	char buf[21];
 
 	int len = strlen(message);
 
@@ -52,7 +52,7 @@ int rip_packet_decode(char *message, RIPPacket *packet)
 
 int rip_packet_encode(char *message, RIPPacket *packet)
 {
-	char buf[20];
+	char buf[21];
 
 	sprintf(message, RIP_PACKET_FORMAT_HEADER,
 		packet->command,
