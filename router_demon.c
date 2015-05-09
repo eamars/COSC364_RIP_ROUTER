@@ -18,7 +18,7 @@
 #define BUF_SZ 504 // max size for rip header + 25 * entry
 
 const int DEACTIVE_TIME = 10;
-const int GARBAGE_COLLECTION_TIME = 15;
+const int GARBAGE_COLLECTION_TIME = 60;
 const int UPDATE_TIME = GARBAGE_COLLECTION_TIME / DEACTIVE_TIME;
 
 // global variable
@@ -104,25 +104,22 @@ void make_response(void)
 				table_entry != NULL;
 				table_entry = table_entry->next)
 			{
-				// do not send the corresponding information to the sender
-				if (receiver->destination != table_entry->destination)
+				// do not send the information about sender
+				packet.entry[i].AFI = AF_INET;
+				packet.entry[i].address = table_entry->destination;
+				packet.entry[i].next_hop = router_id;
+
+
+				// split horizon with poison reverse
+				if (receiver->destination == table_entry->reference)
 				{
-					packet.entry[i].AFI = AF_INET;
-					packet.entry[i].address = table_entry->destination;
-					packet.entry[i].next_hop = router_id;
-
-
-					// split horizon with poison reverse
-					if (receiver->destination == table_entry->reference)
-					{
-						packet.entry[i].metric = 16;
-					}
-					else
-					{
-						packet.entry[i].metric = table_entry->metric;
-					}
-					i++;
+					packet.entry[i].metric = 16;
 				}
+				else
+				{
+					packet.entry[i].metric = table_entry->metric;
+				}
+				i++;
 			}
 
 			packet.n_entry = i;
@@ -131,15 +128,42 @@ void make_response(void)
 
 			rip_packet_encode(buffer, &packet);
 
-			printf("%s\n", buffer);
+			printf("send: [%s] to %d\n", buffer, receiver->destination);
 
 			send_message(buffer, strlen(buffer), receiver->port);
 		}
 	}
+}
 
+int update_table(RIPPacket *packet)
+{
+	int i;
 
+	if (packet->n_entry == 0)
+	{
+		return -1;
+	}
 
+	// update neighbour router
+	updateNeighbourRouter(packet->entry[0].next_hop);
 
+	// add to routing table
+	for (i = 0; i < (int)packet->n_entry; i++)
+	{
+		if (packet->entry[i].address != router_id)
+		{
+			insertIntoRoutingTable(
+				packet->entry[i].address,
+				packet->entry[i].next_hop,
+				0,
+				"LU_",
+				packet->entry[i].metric,
+				packet->entry[i].next_hop,
+				0
+				);
+		}
+	}
+	return 0;
 }
 
 static void timer_handler()
@@ -147,7 +171,11 @@ static void timer_handler()
 	// atomic process, so disable the alarm at present
 	signal(SIGALRM, SIG_IGN);
 
-	updateTTL();
+	// if detected one router offline, then start transmit
+	if (updateTTL())
+	{
+		make_response();
+	}
 	//printf("----------------\n");
 	printRoutingTable();
 	//printf("----------------\n");
@@ -163,11 +191,6 @@ static void timer_handler()
 	signal(SIGALRM, timer_handler);
 }
 
-int update_table(RIPPacket *packet)
-{
-
-	return 0;
-}
 
 int decode_message(char *buffer, RIPPacket *p)
 {

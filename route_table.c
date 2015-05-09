@@ -76,36 +76,77 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 
 	RouteTableNode *prev = NULL;
 	RouteTableNode *curr = route_table;
+	int metric_to_neighbour;
+	int new_metric;
+
+
+	// calculate metric to neighbour
+	metric_to_neighbour = 16;
+	for (RouteTableNode *it = route_table; it != NULL; it = it->next)
+	{
+		if (it->flags[0] == 'N')
+		{
+			if (it->destination == next)
+			{
+				// find the neighbour
+				metric_to_neighbour = it->metric;
+				break;
+			}
+		}
+
+	}
+
+	new_metric = metric + metric_to_neighbour;
+	if (new_metric >= 16)
+	{
+		new_metric = 16;
+	}
 
 	while (curr != NULL)
 	{
+
 		// entry already exists
 		if (curr->destination == dest)
 		{
 			// update the metric
 			// first get metric from neighbour table, we assumed the neighbour is always
 			// on at this stage
-			int metric_to_neighbour = 16;
 
-			for (RouteTableNode *it = route_table; it != NULL && it->flags[1] == 'N'; it = it->next)
+			if (metric == 16 && next == curr->next_hop)
 			{
-				if (it->destination == next)
+				if (curr->flags[1] == 'U')
 				{
-					// find the neighbour
-					metric_to_neighbour = it->metric;
-					break;
+					curr->flags[1] = 'D';
+					curr->TTL = 0;
+					curr->metric = 16;
+				}
+				else if (curr->flags[1] == 'D')
+				{
+
 				}
 			}
 
-			curr->metric += metric_to_neighbour;
-			if (curr->metric > 16)
+
+
+			// update only if lower metric
+			if (new_metric < curr->metric)
 			{
-				curr->metric = 16;
-				curr->flags[1] = 'D';
+				curr->metric = new_metric;
+				if (new_metric == 16)
+				{
+					curr->flags[1] = 'D';
+					curr->TTL = 0;
+				}
+				else
+				{
+					curr->flags[1] = 'U';
+					curr->TTL = 0;
+				}
+
+				// update reference
+				curr->reference = ref;
 			}
 
-			// update reference
-			curr->reference = ref;
 
 			return;
 		}
@@ -113,16 +154,84 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 		curr = curr->next;
 	}
 
+
+
 	// insert at front
+	// do not insert dead link
 	if (curr == NULL && prev == NULL)
 	{
-		route_table = create_new_entry(dest, next, port, flags, metric, ref, TTL);
+		if (new_metric != 16)
+		{
+			route_table = create_new_entry(dest, next, port, flags, new_metric, ref, TTL);
+		}
 	}
 	// insert at end
 	else if (curr == NULL && prev != NULL)
 	{
-		prev->next = create_new_entry(dest, next, port, flags, metric, ref, TTL);
+		if (new_metric != 16)
+		{
+			prev->next = create_new_entry(dest, next, port, flags, new_metric, ref, TTL);
+		}
+
 	}
+}
+
+void updateNeighbourRouter(int destination)
+{
+	int metric;
+
+
+	for (RouteTableNode *it = route_table; it != NULL; it = it->next)
+	{
+		if (it->flags[0] == 'N')
+		{
+			if (it->destination == destination)
+			{
+				it->flags[1] = 'U'; // bring up the router and reset TTL
+				it->TTL = 0;
+				if (it->metric == 16) // restore metric to neighbour router
+				{
+					// look for backup entry to restore metric
+					metric = 16;
+					for (RouteTableNode *backup = neighbour_table; backup != NULL; backup = backup->next)
+					{
+						if (backup->destination == destination)
+						{
+							metric = backup->metric;
+							break;
+						}
+					}
+					it->metric = metric;
+
+				}
+				return;
+			}
+		}
+	}
+
+	// if neighbour router doesn't exist, then restore from backup
+
+	for (RouteTableNode *backup = neighbour_table; backup != NULL; backup = backup->next)
+	{
+		if (backup->destination == destination)
+		{
+			RouteTableNode *prev = route_table;
+			route_table = create_new_entry(
+				backup->destination,
+				backup->next_hop,
+				backup->port,
+				"NU_", // no link status in backup neighbour
+				backup->metric,
+				backup->reference,
+				backup->TTL
+				);
+			printf("%c%c%c\n", backup->flags[0], backup->flags[1], backup->flags[2]);
+			route_table->next = prev;
+			break;
+		}
+	}
+
+
 }
 
 static void free_nodes(RouteTableNode *table)
@@ -134,20 +243,24 @@ static void free_nodes(RouteTableNode *table)
 	}
 }
 
-static void print_nodes(RouteTableNode *table)
+void printRoutingTable()
 {
-	if (table != NULL)
+	RouteTableNode *current = route_table;
+
+	printf("RIP routing table\n");
+	printf("Destination    Next_Hop    Port    Metric    Flags    Reference    TTL\n");
+	while (current != NULL)
 	{
-		printf("DEST = %d, NEXT_HOP = %d, PORT = %d, METRIC = %d, FLAGS = %c%c%c, REF = %d, TTL = %d\n",
-			table->destination,
-			table->next_hop,
-			table->port,
-			table->metric,
-			table->flags[0], table->flags[1], table->flags[2],
-			table->reference,
-			table->TTL
+		printf("%6d%14d%12d%7d%7c%c%c%11d%10d\n",
+			current->destination,
+			current->next_hop,
+			current->port,
+			current->metric,
+			current->flags[0], current->flags[1], current->flags[2],
+			current->reference,
+			current->TTL
 			);
-		print_nodes(table->next);
+		current = current->next;
 	}
 }
 
@@ -156,13 +269,7 @@ void destroyRoutingTable()
 	free_nodes(route_table);
 	free_nodes(neighbour_table);
 }
-void printRoutingTable()
-{
-	printf("RIP routing table\n");
-	print_nodes(route_table);
-	printf("RIP internal neighbour backup table\n");
-	print_nodes(neighbour_table);
-}
+
 
 void removeEntry(int dest)
 {
@@ -199,21 +306,48 @@ void removeEntry(int dest)
 	}
 }
 
-void updateTTL(void)
+int updateTTL(void)
 {
+	int trigger = 0;
+
 	for (RouteTableNode *it = route_table;
 		it != NULL;
 		it = it->next)
 	{
-		it->TTL++;
-		if (it->flags[1] == 'U' && it->TTL == DEACTIVE_TIME)
+		if (it->flags[0] == 'N')
 		{
-			it->TTL = 0;
-			it->flags[1] = 'D';
+			if (it->flags[1] == 'U' && it->TTL == DEACTIVE_TIME)
+			{
+				it->TTL = 0;
+				it->flags[1] = 'D';
+				it->metric = 16;
+				trigger = 1;
+			}
+			else if (it->flags[1] == 'D' && it->TTL == GARBAGE_COLLECTION_TIME)
+			{
+				removeEntry(it->destination);
+			}
+			else
+			{
+				it->TTL++;
+			}
 		}
-		else if (it->flags[1] == 'D' && it->TTL == GARBAGE_COLLECTION_TIME)
+		else if (it->flags[0] == 'L')
 		{
-			removeEntry(it->destination);
+			if (it->flags[1] == 'U')
+			{
+
+			}
+			else if (it->flags[1] == 'D' && it->TTL == GARBAGE_COLLECTION_TIME)
+			{
+				removeEntry(it->destination);
+			}
+			else
+			{
+				it->TTL++;
+			}
 		}
 	}
+
+	return trigger;
 }

@@ -30,6 +30,7 @@ void initRoutingTable(SingleLinkedList list);
 void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metric, int ref, int TTL);
 void destroyRoutingTable();
 void printRoutingTable();
-void updateTTL();
+int updateTTL();
+void updateNeighbourRouter(int destination);
 
 #endif
