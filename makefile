@@ -12,7 +12,7 @@ DEL = rm
 all: router.out
 
 # Compile
-router.o: router.c config.h list.h pidlock.h routing_table.h
+router.o: router.c config.h list.h pidlock.h route_table.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
 config.o: config.c config.h
@@ -24,10 +24,10 @@ list.o: list.c list.h
 pidlock.o: pidlock.c pidlock.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
-router_demon.o: router_demon.c routing_table.h rip_message.h
+router_demon.o: router_demon.c route_table.h rip_message.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
-routing_table.o: routing_table.c routing_table.h
+route_table.o: route_table.c route_table.h
 	$(CC) -c $(CFLAGS) $(LIBS) $< -o $@
 
 rip_message.o: rip_message.c rip_message.h
@@ -35,8 +35,8 @@ rip_message.o: rip_message.c rip_message.h
 
 
 # Link
-router.out: router.o config.o list.o pidlock.o router_demon.o routing_table.o \
-		rip_message.o
+router.out: router.o config.o list.o pidlock.o router_demon.o \
+		rip_message.o route_table.o
 	$(CC) $(CFLAGS) $(LIBS) $^ -o $@
 
 .PHONY: clean

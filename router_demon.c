@@ -11,20 +11,21 @@
 #include <errno.h>
 
 #include "list.h"
-#include "routing_table.h"
+#include "route_table.h"
 #include "rip_message.h"
 #include "pidlock.h"
 
 #define BUF_SZ 504 // max size for rip header + 25 * entry
 
 const int DEACTIVE_TIME = 10;
-const int GARBAGE_COLLECTION_TIME = 60;
+const int GARBAGE_COLLECTION_TIME = 15;
 const int UPDATE_TIME = GARBAGE_COLLECTION_TIME / DEACTIVE_TIME;
 
 // global variable
 extern unsigned int router_id;
 extern char input_ports[512];
 extern char output_dest[512];
+extern RouteTableNode *route_table;
 
 static unsigned int second_tick;
 
@@ -81,76 +82,63 @@ int send_message(char *buf, int send_size, int sender_port)
 
 void make_response(void)
 {
-	// send routing tables to filedes (without split-horizon)
-	RIPPacket p;
+	char buffer[BUF_SZ];
+	int i;
 
-	int sender_port;
-	int n = getNumEntry();
-	int hops[25];
-	int j;
+	// create different message for different receiver
 
-
-
-
-	// make rip packet
-	memset(&p, 0, sizeof(p));
-
-	p.command = RIP_RESPONSE;
-	p.version = RIP_VERSION_2;
-
-	// get router hops
-	// without split horizon
-	memset(hops, 0, sizeof(hops));
-	getAllHops(hops);
-
-	j = 0;
-	for (int i = 0; hops[i] != -1 && i < n; i++)
+	for (RouteTableNode *receiver = route_table;
+		receiver != NULL;
+		receiver = receiver->next)
 	{
-		// ignore sending back the information about receiver
-		// this enables the split horizon
-		/*
-		if (hops[i] == receiver)
+		// only send to neighbour and status is up
+		if (receiver->flags[0] == 'N' && receiver->flags[1] == 'U')
 		{
-			continue;
-		}
-		*/
-		p.entry[j].AFI = AF_INET;
-		p.entry[j].address = router_id;
-		p.entry[j].next_hop = hops[i];
-		p.entry[j].metric = getValue(hops[i], METRIC);
+			RIPPacket packet;
+			i = 0;
 
-		j++;
-	}
+			packet.command = RIP_RESPONSE;
+			packet.version = RIP_VERSION_2;
 
-
-	p.n_entry = j;
-
-	// prepare for send buffer
-	int send_size = 4 + j * 20;
-
-	// form raw string
-	char buf[send_size + 1];
-	memset(buf, 0, send_size);
-
-	rip_packet_encode(buf, &p);
-	printf("send: [%s]\n", buf);
-	// debug_print_rip_packet(&p);
-
-	// send to adjacent port
-	for (int i = 0; hops[i] != -1 && i < n; i++)
-	{
-		if ((sender_port = getValue(hops[i], PORT)) != 0 &&
-			getValue(hops[i], METRIC) != 16)
-		{
-			if (send_message(buf, send_size, sender_port) != 0)
+			for (RouteTableNode *table_entry = route_table;
+				table_entry != NULL;
+				table_entry = table_entry->next)
 			{
-				perror("Failed to send");
-				exit(-1);
-			}
-			 printf("	to: %d [%d]\n", hops[i], sender_port);
+				// do not send the corresponding information to the sender
+				if (receiver->destination != table_entry->destination)
+				{
+					packet.entry[i].AFI = AF_INET;
+					packet.entry[i].address = table_entry->destination;
+					packet.entry[i].next_hop = router_id;
 
+
+					// split horizon with poison reverse
+					if (receiver->destination == table_entry->reference)
+					{
+						packet.entry[i].metric = 16;
+					}
+					else
+					{
+						packet.entry[i].metric = table_entry->metric;
+					}
+					i++;
+				}
+			}
+
+			packet.n_entry = i;
+
+			memset(buffer, 0, BUF_SZ);
+
+			rip_packet_encode(buffer, &packet);
+
+			printf("%s\n", buffer);
+
+			send_message(buffer, strlen(buffer), receiver->port);
 		}
 	}
+
+
+
 
 }
 
@@ -158,10 +146,11 @@ static void timer_handler()
 {
 	// atomic process, so disable the alarm at present
 	signal(SIGALRM, SIG_IGN);
-	timeoutUpdate();
-	printf("----------------\n");
+
+	updateTTL();
+	//printf("----------------\n");
 	printRoutingTable();
-	printf("----------------\n");
+	//printf("----------------\n");
 
 	if (second_tick % UPDATE_TIME == 0)
 	{
@@ -176,85 +165,7 @@ static void timer_handler()
 
 int update_table(RIPPacket *packet)
 {
-	int port;
 
-	debug_print_rip_packet(packet);
-
-	printf("Router%d\n", router_id);
-	printf ("Before: \n");
-	printRoutingTable();
-	for (unsigned int i = 0; i < packet->n_entry; i++)
-	{
-		/*
-		// split horizon enabled here
-		if (packet.entry[i].next_hop == router_id)
-		{
-			continue;
-		}
-		*/
-		// if adjacent hop then update metric
-		port = getValue(packet->entry[i].next_hop, PORT);
-
-
-		// loop
-		if (packet->entry[i].next_hop == router_id)
-		{
-			updateTable(
-				packet->entry[i].address,
-				0,
-				packet->entry[i].address,
-				packet->entry[i].metric
-			);
-		}
-		// adjacent hop
-		else if (port != -1 && port != 0 && packet->entry[i].address != packet->entry[i].next_hop)
-		{
-			updateTable(
-				packet->entry[i].next_hop,
-				0,
-				packet->entry[i].address,
-				packet->entry[i].metric
-			);
-		}
-
-		// old hop awake
-		else if (getValue(packet->entry[i].address, METRIC) == 16)
-		{
-			updateTable(
-				packet->entry[i].next_hop,
-				0,
-				packet->entry[i].address,
-				packet->entry[i].metric
-			);
-		}
-
-
-		// metric = 16
-		else if (packet->entry[i].metric == 16)
-		{
-			updateTable(
-				packet->entry[i].next_hop,
-				0,
-				packet->entry[i].address,
-				16
-			);
-		}
-
-
-		// new hop
-		else
-		{
-			updateTable(
-				packet->entry[i].next_hop,
-				0,
-				packet->entry[i].address,
-				packet->entry[i].metric + getValue(packet->entry[i].address, METRIC)
-			);
-		}
-
-	}
-	printf ("After: \n");
-	printRoutingTable();
 	return 0;
 }
 
@@ -338,7 +249,7 @@ int router_demon_start(void)
 	setitimer(ITIMER_REAL, &timer, NULL);
 
 	// create the initial routing with only adjacent routers
-	createRoutingTableFromConfig(outputs);
+	initRoutingTable(outputs);
 
 	// free the memory allocated by input and output
 	destroyList(inputs);
