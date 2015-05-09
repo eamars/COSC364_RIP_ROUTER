@@ -48,6 +48,7 @@ int make_socket(int port)
 	if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0)
 	{
 		perror("Failed to bind socket");
+		printf("port = %d\n", port);
 		remove_pid(router_id);
 		exit(-1);
 	}
