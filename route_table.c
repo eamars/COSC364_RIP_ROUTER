@@ -119,6 +119,7 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 					curr->flags[1] = 'D';
 					curr->TTL = 0;
 					curr->metric = 16;
+					curr->reference = ref;
 				}
 				else if (curr->flags[1] == 'D')
 				{
@@ -132,6 +133,9 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 			if (new_metric < curr->metric)
 			{
 				curr->metric = new_metric;
+				curr->next_hop = next;
+				curr->reference = ref;
+
 				if (new_metric == 16)
 				{
 					curr->flags[1] = 'D';
@@ -143,8 +147,12 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 					curr->TTL = 0;
 				}
 
-				// update reference
-				curr->reference = ref;
+				// turn neighbour router to learned router
+				if (curr->flags[0] == 'N')
+				{
+					curr->flags[0] = 'L';
+					curr->port = 0;
+				}
 			}
 
 
@@ -178,9 +186,6 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 
 void updateNeighbourRouter(int destination)
 {
-	int metric;
-
-
 	for (RouteTableNode *it = route_table; it != NULL; it = it->next)
 	{
 		if (it->flags[0] == 'N')
@@ -189,24 +194,25 @@ void updateNeighbourRouter(int destination)
 			{
 				it->flags[1] = 'U'; // bring up the router and reset TTL
 				it->TTL = 0;
+				it->next_hop = destination;
+				it->reference = destination;
 				if (it->metric == 16) // restore metric to neighbour router
 				{
 					// look for backup entry to restore metric
-					metric = 16;
 					for (RouteTableNode *backup = neighbour_table; backup != NULL; backup = backup->next)
 					{
 						if (backup->destination == destination)
 						{
-							metric = backup->metric;
+							it->metric = backup->metric;
 							break;
 						}
 					}
-					it->metric = metric;
 
 				}
 				return;
 			}
 		}
+
 	}
 
 	// if neighbour router doesn't exist, then restore from backup
@@ -247,7 +253,7 @@ void printRoutingTable()
 {
 	RouteTableNode *current = route_table;
 
-	printf("RIP routing table\n");
+	printf("Router[%d] Routing table\n", router_id);
 	printf("Destination    Next_Hop    Port    Metric    Flags    Reference    TTL\n");
 	while (current != NULL)
 	{
@@ -316,12 +322,24 @@ int updateTTL(void)
 	{
 		if (it->flags[0] == 'N')
 		{
+			// neighbour router offline
 			if (it->flags[1] == 'U' && it->TTL == DEACTIVE_TIME)
 			{
 				it->TTL = 0;
 				it->flags[1] = 'D';
 				it->metric = 16;
 				trigger = 1;
+
+				// set all metric with next_hop = current neighbour to 16
+				for (RouteTableNode *entry = route_table; entry != NULL; entry = entry->next)
+				{
+					if (entry->next_hop == it->destination && entry->destination != it->destination)
+					{
+						entry->TTL = 0;
+						entry->flags[1] = 'D';
+						entry ->metric = 16;
+					}
+				}
 			}
 			else if (it->flags[1] == 'D' && it->TTL == GARBAGE_COLLECTION_TIME)
 			{
