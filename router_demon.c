@@ -28,7 +28,7 @@ extern char input_ports[512];
 extern char output_dest[512];
 extern RouteTableNode *route_table;
 
-static unsigned int second_tick;
+static unsigned int second_tick; // 32 bit counter. counts the number of interrupts
 
 int make_socket(int port)
 {
@@ -62,7 +62,7 @@ int send_message(char *buf, int send_size, int sender_port)
 	struct sockaddr_in sock;
 	int sock_fd;
 
-
+	// open a send socket
 	sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock_fd < 0)
 	{
@@ -73,10 +73,13 @@ int send_message(char *buf, int send_size, int sender_port)
 	sock.sin_family = AF_INET;
 	sock.sin_port = htons(sender_port);
 
+	// for UDP, we don't really care if we successfully delivered the meesage to
+	// destination
 	if (sendto(sock_fd, buf, send_size, 0, (struct sockaddr *)&sock, sizeof(sock)) < 0)
 	{
 		return -3;
 	}
+
 	close(sock_fd);
 
 	return 0;
@@ -88,7 +91,6 @@ void make_response(void)
 	int i;
 
 	// create different message for different receiver
-
 	for (RouteTableNode *receiver = route_table;
 		receiver != NULL;
 		receiver = receiver->next)
@@ -128,10 +130,12 @@ void make_response(void)
 
 			memset(buffer, 0, BUF_SZ);
 
+			// encode the packet to string into buffer
 			rip_packet_encode(buffer, &packet);
 
 			printf("send: [%s] to %d\n", buffer, receiver->destination);
 
+			// send the message to destination
 			send_message(buffer, strlen(buffer), receiver->port);
 		}
 	}
@@ -146,10 +150,10 @@ int update_table(RIPPacket *packet)
 		return -1;
 	}
 
-	// update neighbour router
+	// bring the neighbour router online of already offline
 	updateNeighbourRouter(packet->entry[0].next_hop);
 
-	// add to routing table
+	// add received entry to route_table
 	for (i = 0; i < (int)packet->n_entry; i++)
 	{
 		if (packet->entry[i].address != router_id)
@@ -168,6 +172,13 @@ int update_table(RIPPacket *packet)
 	return 0;
 }
 
+/**
+ * We need some random timedelay sending message.
+ * 0.2 * UPDATE_TIME is adapted.
+ *
+ * response is delayed and sent by child process.
+ * parent process just back to normal work
+ */
 void delay_response()
 {
 	int pid;
@@ -199,6 +210,10 @@ void delay_response()
 	}
 }
 
+/**
+ * Interrupt handler: maintain the timer for each entries in route_table
+ * It also trigger the timed event for sending periodic RIP Response
+ */
 static void timer_handler()
 {
 	struct itimerval timer;
@@ -212,6 +227,7 @@ static void timer_handler()
 		make_response();
 	}
 
+	// time to send message?
 	if (second_tick % UPDATE_TIME == 0)
 	{
 		delay_response();
@@ -222,6 +238,7 @@ static void timer_handler()
 
 	second_tick++;
 
+	// set timer back to 1s for every event
 	timer.it_value.tv_sec = 1;
 	timer.it_value.tv_usec = 0;
 	timer.it_interval.tv_sec = 0;

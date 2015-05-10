@@ -96,6 +96,7 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 
 	}
 
+	// create new metric for entry
 	new_metric = metric + metric_to_neighbour;
 	if (new_metric >= 16)
 	{
@@ -111,7 +112,7 @@ void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metri
 			// update the metric
 			// first get metric from neighbour table, we assumed the neighbour is always
 			// on at this stage
-
+			// ignore the split horizon with posion reverse message
 			if (metric == 16 && next == curr->next_hop)
 			{
 				if (curr->flags[1] == 'U')
@@ -350,6 +351,9 @@ int updateTTL(void)
 				it->TTL++;
 			}
 		}
+
+		// we only maintain the garbage collection timer for entries learned fron
+		// neighbour router
 		else if (it->flags[0] == 'L')
 		{
 			if (it->flags[1] == 'U')

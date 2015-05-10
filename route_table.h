@@ -1,3 +1,30 @@
+/**
+ * Route table module
+ *
+ * Module maintains two route tables
+ * route_table: store the router information directly set by configure and learned
+ * 				from neighbour routers
+ * neigbhour_table: stores the initial information read from configure and restore
+ * 					settings if necessary
+ *
+ * Route table format:
+ * Destination    Next_Hop    Port    Metric    Flags    Reference    TTL
+ *
+ * Destination: destination router, stored as router id
+ * Next_Hop: neighbour used to reach destinated router
+ * Port: only valid for neighbour router. Used to send UDP packet
+ * Metric: total cost to reach the destinated router
+ * Flags: contains three columns
+ *   flags[0]: N for neighbour router and L for remote router learned from neigbhour
+ *   flags[1]: U for link up and D for link down
+ *   flags[2]: unused
+ * Reference: the entry that learned from. Used in split horizon
+ * TTL: Time To aLive counter
+ *
+ * Author: Ran Bao, Liang Ma
+ *
+ */
+
 #ifndef ROUTE_TABLE_H
 #define ROUTE_TABLE_H
 
@@ -9,28 +36,54 @@ struct route_table_s
 	int destination;
 	int next_hop;
 	int port;
-
-	// flags
-	// N__: neighbour
-	// L__: learned
-	// _U_: link up
-	// _D_: link down
-
 	char flags[3];
 	int metric;
-
-	// reference is where does the entry learned from
 	int reference;
 	int TTL;
 
 	RouteTableNode *next;
 };
 
+/**
+ * Initilize the routing table, includes adding entry from configure file to
+ * route_table and neighbour_table
+ * @param list [description]
+ */
 void initRoutingTable(SingleLinkedList list);
+
+/**
+ * Insert new entry to route_table
+ * @param dest   destinated router
+ * @param next   next_hop or via
+ * @param port   port number
+ * @param flags  link status of router
+ * @param metric total cost to reach router
+ * @param ref    the entry that learned from
+ * @param TTL    counter
+ */
 void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metric, int ref, int TTL);
+
+/**
+ * Free memory that allocated for route_table and neighbour_table
+ * @return [description]
+ */
 void destroyRoutingTable();
+
+/**
+ * pretty print the route_table
+ */
 void printRoutingTable();
+
+/**
+ * Maintain the counter of entry in route_table
+ * @return [description]
+ */
 int updateTTL();
+
+/**
+ * Bring the neighbour router online if receive any message from this router
+ * @param destination [description]
+ */
 void updateNeighbourRouter(int destination);
 
 #endif
