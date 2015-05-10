@@ -111,8 +111,13 @@ int stop(void)
 	}
 
 	// terminate the task
+	// kill both child and parent task
+	sprintf(cmd, "pkill -TERM -P %d", pid);
+	system(cmd);
 	sprintf(cmd, "kill -TERM %d", pid);
 	system(cmd);
+	// kill(pid, SIG_TERM);
+
 	printf("\x1B[32mRouter%d\033[0m Terminated\n", router_id);
 
 	remove_pid(router_id);
