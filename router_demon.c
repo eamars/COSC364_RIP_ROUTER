@@ -216,8 +216,6 @@ void delay_response()
  */
 static void timer_handler()
 {
-	struct itimerval timer;
-
 	// atomic process, so disable the alarm at present
 	signal(SIGALRM, SIG_IGN);
 
@@ -237,14 +235,6 @@ static void timer_handler()
 
 
 	second_tick++;
-
-	// set timer back to 1s for every event
-	timer.it_value.tv_sec = 1;
-	timer.it_value.tv_usec = 0;
-	timer.it_interval.tv_sec = 0;
-	timer.it_interval.tv_usec = 0;
-
-	setitimer(ITIMER_REAL, &timer, NULL);
 
 	// enable alarm again
 	signal(SIGALRM, timer_handler);
@@ -324,7 +314,7 @@ int router_demon_start(void)
 	// set timer
 	timer.it_value.tv_sec = 1;
 	timer.it_value.tv_usec = 0;
-	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_sec = 1;
 	timer.it_interval.tv_usec = 0;
 
 	// register timer
@@ -386,6 +376,9 @@ int router_demon_start(void)
 			}
 		}
 
+		// disable the interrupt during processing the incoming message
+		signal(SIGALRM, SIG_IGN);
+
 		// udp receive
 		memset(buffer, 0, sizeof(buffer));
 		if (recvfrom(server_fd, buffer, BUF_SZ, 0, (struct sockaddr *)&clientname, &len) < 0)
@@ -405,6 +398,9 @@ int router_demon_start(void)
 		{
 			update_table(&p);
 		}
+
+		// enable the interrupt after processing
+		signal(SIGALRM, timer_handler);
 
 	}
 
