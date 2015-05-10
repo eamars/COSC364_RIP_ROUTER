@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <time.h>
 
 #include "list.h"
 #include "route_table.h"
@@ -19,7 +20,7 @@
 
 const int DEACTIVE_TIME = 10;
 const int GARBAGE_COLLECTION_TIME = 60;
-const int UPDATE_TIME = GARBAGE_COLLECTION_TIME / DEACTIVE_TIME;
+const int UPDATE_TIME = 6;
 
 // global variable
 extern unsigned int router_id;
@@ -167,8 +168,41 @@ int update_table(RIPPacket *packet)
 	return 0;
 }
 
+void delay_response()
+{
+	int pid;
+
+	pid = fork();
+	if (pid < 0)
+	{
+		perror("Failed to fork");
+		exit(-1);
+	}
+	else if (pid == 0) // let child process wait and send
+	{
+		int delay = UPDATE_TIME * 1000000 / 5;
+
+		// generate random seed
+		srand(time(NULL));
+
+		if (usleep(rand() % delay) != 0)
+		{
+			perror("Failed to sleep");
+			exit(-1);
+		}
+		make_response();
+		exit(0);
+	}
+	else
+	{
+
+	}
+}
+
 static void timer_handler()
 {
+	struct itimerval timer;
+
 	// atomic process, so disable the alarm at present
 	signal(SIGALRM, SIG_IGN);
 
@@ -177,17 +211,24 @@ static void timer_handler()
 	{
 		make_response();
 	}
-	//printf("----------------\n");
-	printRoutingTable();
-	//printf("----------------\n");
 
 	if (second_tick % UPDATE_TIME == 0)
 	{
-		make_response();
+		delay_response();
 	}
+
+	printRoutingTable();
 
 
 	second_tick++;
+
+	timer.it_value.tv_sec = 1;
+	timer.it_value.tv_usec = 0;
+	timer.it_interval.tv_sec = 0;
+	timer.it_interval.tv_usec = 0;
+
+	setitimer(ITIMER_REAL, &timer, NULL);
+
 	// enable alarm again
 	signal(SIGALRM, timer_handler);
 }
@@ -221,6 +262,8 @@ int router_demon_start(void)
 	int ret;
 	char buffer[BUF_SZ]; // raw buffer
 	struct itimerval timer;
+
+
 
 	// read and load listening ports from config file
 	SingleLinkedList inputs = split(input_ports, ',');
@@ -263,8 +306,8 @@ int router_demon_start(void)
 
 	// set timer
 	timer.it_value.tv_sec = 1;
-	timer.it_value.tv_usec = 0; // starts almost immediately
-	timer.it_interval.tv_sec = 1; // period = 1Hz
+	timer.it_value.tv_usec = 0;
+	timer.it_interval.tv_sec = 0;
 	timer.it_interval.tv_usec = 0;
 
 	// register timer

@@ -4,7 +4,7 @@
 
 # Define compilers and other flags
 CC = cc
-CFLAGS = -Os -Wall -Wstrict-prototypes -Wextra -Wno-unneeded-internal-declaration -g -std=c99 -D_XOPEN_SOURCE
+CFLAGS = -Os -Wall -Wstrict-prototypes -Wextra -Wno-unneeded-internal-declaration -g -std=c99 -D_BSD_SOURCE
 LIBS =
 DEL = rm
 
