@@ -8,7 +8,7 @@
  * 					settings if necessary
  *
  * Route table format:
- * Destination    Next_Hop    Port    Metric    Flags    Reference    TTL
+ * Destination    Next_Hop    Port    Metric    Flags    TTL
  *
  * Destination: destination router, stored as router id
  * Next_Hop: neighbour used to reach destinated router
@@ -18,7 +18,6 @@
  *   flags[0]: N for neighbour router and L for remote router learned from neigbhour
  *   flags[1]: U for link up and D for link down
  *   flags[2]: unused
- * Reference: the entry that learned from. Used in split horizon
  * TTL: Time To aLive counter
  *
  * Author: Ran Bao, Liang Ma
@@ -38,7 +37,6 @@ struct route_table_s
 	int port;
 	char flags[3];
 	int metric;
-	int reference;
 	int TTL;
 
 	RouteTableNode *next;
@@ -61,29 +59,31 @@ void initRoutingTable(SingleLinkedList list);
  * @param ref    the entry that learned from
  * @param TTL    counter
  */
-void insertIntoRoutingTable(int dest, int next, int port, char *flags, int metric, int ref, int TTL);
+void addEntryToRoutingTable(int dest, int next, int metric);
 
 /**
  * Free memory that allocated for route_table and neighbour_table
  * @return [description]
  */
-void destroyRoutingTable();
+void destroyTable(RouteTableNode *table);
 
 /**
  * pretty print the route_table
  */
-void printRoutingTable();
+void printTable(RouteTableNode *table);
 
 /**
  * Maintain the counter of entry in route_table
  * @return [description]
  */
-int updateTTL();
+RouteTableNode * updateTTL(void);
 
 /**
  * Bring the neighbour router online if receive any message from this router
  * @param destination [description]
  */
 void updateNeighbourRouter(int destination);
+
+RouteTableNode *createForwardingTable();
 
 #endif

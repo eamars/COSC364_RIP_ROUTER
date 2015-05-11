@@ -26,7 +26,9 @@ const int UPDATE_TIME = 6;
 extern unsigned int router_id;
 extern char input_ports[512];
 extern char output_dest[512];
+
 extern RouteTableNode *route_table;
+extern RouteTableNode *neighbour_table;
 
 static unsigned int second_tick; // 32 bit counter. counts the number of interrupts
 
@@ -85,7 +87,7 @@ int send_message(char *buf, int send_size, int sender_port)
 	return 0;
 }
 
-void make_response(void)
+void make_response(RouteTableNode *table)
 {
 	char buffer[BUF_SZ];
 	int i;
@@ -95,7 +97,7 @@ void make_response(void)
 		receiver != NULL;
 		receiver = receiver->next)
 	{
-		// only send to neighbour and status is up
+		// only send to neighbour with status is up
 		if (receiver->flags[0] == 'N' && receiver->flags[1] == 'U')
 		{
 			RIPPacket packet;
@@ -104,26 +106,29 @@ void make_response(void)
 			packet.command = RIP_RESPONSE;
 			packet.version = RIP_VERSION_2;
 
-			for (RouteTableNode *table_entry = route_table;
+			for (RouteTableNode *table_entry = table;
 				table_entry != NULL;
 				table_entry = table_entry->next)
 			{
-				// do not send the information about sender
-				packet.entry[i].AFI = AF_INET;
-				packet.entry[i].address = table_entry->destination;
-				packet.entry[i].next_hop = router_id;
+				// do not send the entry of dead router
+				if (table_entry->flags[1] != 'D')
+				{
+					packet.entry[i].AFI = AF_INET;
+					packet.entry[i].address = table_entry->destination;
+					packet.entry[i].next_hop = router_id;
 
 
-				// split horizon with poison reverse
-				if (receiver->destination == table_entry->reference)
-				{
-					packet.entry[i].metric = 16;
+					// split horizon with poison reverse
+					if (receiver->destination == table_entry->next_hop)
+					{
+						packet.entry[i].metric = 16;
+					}
+					else
+					{
+						packet.entry[i].metric = table_entry->metric;
+					}
+					i++;
 				}
-				else
-				{
-					packet.entry[i].metric = table_entry->metric;
-				}
-				i++;
 			}
 
 			packet.n_entry = i;
@@ -139,6 +144,7 @@ void make_response(void)
 			send_message(buffer, strlen(buffer), receiver->port);
 		}
 	}
+
 }
 
 int update_table(RIPPacket *packet)
@@ -158,14 +164,10 @@ int update_table(RIPPacket *packet)
 	{
 		if (packet->entry[i].address != router_id)
 		{
-			insertIntoRoutingTable(
+			addEntryToRoutingTable(
 				packet->entry[i].address,
 				packet->entry[i].next_hop,
-				0,
-				"LU_",
-				packet->entry[i].metric,
-				packet->entry[i].next_hop,
-				0
+				packet->entry[i].metric
 				);
 		}
 	}
@@ -201,7 +203,11 @@ void delay_response()
 			perror("Failed to sleep");
 			exit(-1);
 		}
-		make_response();
+
+		RouteTableNode *forward_table = createForwardingTable();
+		make_response(forward_table); // enable split horizon
+		destroyTable(forward_table);
+
 		exit(0);
 	}
 	else
@@ -216,13 +222,15 @@ void delay_response()
  */
 static void timer_handler()
 {
+	RouteTableNode *dead_routers;
 	// atomic process, so disable the alarm at present
 	signal(SIGALRM, SIG_IGN);
 
 	// if detected one router offline, then start transmit
-	if (updateTTL())
+	if ((dead_routers = updateTTL()) != NULL)
 	{
-		make_response();
+		make_response(dead_routers);
+		destroyTable(dead_routers);
 	}
 
 	// time to send message?
@@ -231,7 +239,11 @@ static void timer_handler()
 		delay_response();
 	}
 
-	printRoutingTable();
+	// print forwarding table
+	RouteTableNode *forward_table = createForwardingTable();
+	printTable(forward_table);
+	destroyTable(forward_table);
+	printTable(route_table);
 
 
 	second_tick++;
@@ -405,7 +417,8 @@ int router_demon_start(void)
 	}
 
 
-	destroyRoutingTable();
+	destroyTable(route_table);
+	destroyTable(neighbour_table);
 
 	return 0;
 }
