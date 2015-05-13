@@ -76,7 +76,7 @@ void printTable(RouteTableNode *table);
  * Maintain the counter of entry in route_table
  * @return [description]
  */
-RouteTableNode * updateTTL(void);
+int updateTTL(void);
 
 /**
  * Bring the neighbour router online if receive any message from this router

@@ -16,11 +16,11 @@
 #include "rip_message.h"
 #include "pidlock.h"
 
-#define BUF_SZ 504 // max size for rip header + 25 * entry
+#define BUF_SZ 509 // max size for rip header + 25 * entry
 
-const int DEACTIVE_TIME = 10;
-const int GARBAGE_COLLECTION_TIME = 60;
-const int UPDATE_TIME = 6;
+const int DEACTIVE_TIME = 18;
+const int GARBAGE_COLLECTION_TIME = 12;
+const int UPDATE_TIME = 3;
 
 // global variable
 extern unsigned int router_id;
@@ -87,10 +87,12 @@ int send_message(char *buf, int send_size, int sender_port)
 	return 0;
 }
 
-void make_response(RouteTableNode *table)
+void make_response(void)
 {
 	char buffer[BUF_SZ];
 	int i;
+
+	RouteTableNode *table = createForwardingTable();
 
 	// create different message for different receiver
 	for (RouteTableNode *receiver = route_table;
@@ -110,25 +112,21 @@ void make_response(RouteTableNode *table)
 				table_entry != NULL;
 				table_entry = table_entry->next)
 			{
-				// do not send the entry of dead router
-				if (table_entry->flags[1] != 'D')
+				packet.entry[i].AFI = AF_INET;
+				packet.entry[i].address = table_entry->destination;
+				packet.entry[i].next_hop = router_id;
+
+
+				// split horizon with poison reverse
+				if (receiver->destination == table_entry->next_hop)
 				{
-					packet.entry[i].AFI = AF_INET;
-					packet.entry[i].address = table_entry->destination;
-					packet.entry[i].next_hop = router_id;
-
-
-					// split horizon with poison reverse
-					if (receiver->destination == table_entry->next_hop)
-					{
-						packet.entry[i].metric = 16;
-					}
-					else
-					{
-						packet.entry[i].metric = table_entry->metric;
-					}
-					i++;
+					packet.entry[i].metric = 16;
 				}
+				else
+				{
+					packet.entry[i].metric = table_entry->metric;
+				}
+				i++;
 			}
 
 			packet.n_entry = i;
@@ -144,7 +142,7 @@ void make_response(RouteTableNode *table)
 			send_message(buffer, strlen(buffer), receiver->port);
 		}
 	}
-
+	destroyTable(table);
 }
 
 int update_table(RIPPacket *packet)
@@ -193,20 +191,19 @@ void delay_response()
 	}
 	else if (pid == 0) // let child process wait and send
 	{
-		int delay = UPDATE_TIME * 1000000 / 5;
-
 		// generate random seed
 		srand(time(NULL));
 
-		if (usleep(rand() % delay) != 0)
+		int delay = rand() % 400000; // 0.8s
+		printf("Delay %f seconds\n", delay / 1000000.0);
+
+		if (usleep(delay) != 0)
 		{
 			perror("Failed to sleep");
 			exit(-1);
 		}
 
-		RouteTableNode *forward_table = createForwardingTable();
-		make_response(forward_table); // enable split horizon
-		destroyTable(forward_table);
+		make_response(); // enable split horizon
 
 		exit(0);
 	}
@@ -222,15 +219,15 @@ void delay_response()
  */
 static void timer_handler()
 {
-	RouteTableNode *dead_routers;
 	// atomic process, so disable the alarm at present
 	signal(SIGALRM, SIG_IGN);
 
+
+
 	// if detected one router offline, then start transmit
-	if ((dead_routers = updateTTL()) != NULL)
+	if (updateTTL() != 0)
 	{
-		make_response(dead_routers);
-		destroyTable(dead_routers);
+		make_response(); // enable split horizon
 	}
 
 	// time to send message?

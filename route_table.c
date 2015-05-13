@@ -405,11 +405,9 @@ void removeEntry(int dest, int next)
 	}
 }
 
-RouteTableNode * updateTTL(void)
+int updateTTL(void)
 {
-	// table of offline links
-	RouteTableNode *table = NULL;
-	RouteTableNode *temp = NULL;
+	int trigger = 0;
 
 	for (RouteTableNode *it = route_table;
 		it != NULL;
@@ -424,17 +422,9 @@ RouteTableNode * updateTTL(void)
 				it->TTL = 0;
 				it->flags[1] = 'D';
 				it->metric = 16;
-				// insert to offline table list
-				if (table == NULL)
-				{
-					table = create_new_entry(it->destination, it->next_hop, 0, "-UG", 16, 0);
-				}
-				else
-				{
-					temp = table;
-					table = create_new_entry(it->destination, it->next_hop, 0, "-UG", 16, 0);
-					table->next = temp;
-				}
+
+				// yes, we trigger the update
+				trigger = 1;
 
 				// set all metric with next_hop = current neighbour to 16
 				for (RouteTableNode *entry = route_table; entry != NULL; entry = entry->next)
@@ -457,8 +447,7 @@ RouteTableNode * updateTTL(void)
 			}
 		}
 
-		// we only maintain the garbage collection timer for entries learned fron
-		// neighbour router
+		// deal with learned router
 		else if (it->flags[0] == 'L')
 		{
 			if (it->flags[1] == 'U' && it->TTL == DEACTIVE_TIME)
@@ -478,5 +467,5 @@ RouteTableNode * updateTTL(void)
 		}
 	}
 
-	return table;
+	return trigger;
 }
