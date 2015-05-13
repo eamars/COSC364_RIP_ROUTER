@@ -43,6 +43,7 @@ typedef struct rip_packet_s
 {
 	unsigned int command;
 	unsigned int version;
+	unsigned int senderid;
 	unsigned int n_entry;
 	RIPEntry entry[MAX_RIP_ENTRY];
 

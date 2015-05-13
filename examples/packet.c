@@ -22,13 +22,14 @@ typedef struct rip_packet_s
 {
 	unsigned int command;
 	unsigned int version;
+	unsigned int senderid;
 	unsigned int n_entry;
 	RIPEntry entry[MAX_RIP_ENTRY];
 
 } RIPPacket;
 
 
-static const char *RIP_PACKET_FORMAT_HEADER = "%01d%01d00";
+static const char *RIP_PACKET_FORMAT_HEADER = "%01d%01d%02d";
 static const char *RIP_PACKET_FORMAT_ENTRY = "%02d00%04d0000%04d%04d";
 
 int rip_packet_decode(char *message, RIPPacket *packet)
@@ -51,7 +52,8 @@ int rip_packet_decode(char *message, RIPPacket *packet)
 
 	sscanf(buf, RIP_PACKET_FORMAT_HEADER,
 		&packet->command,
-		&packet->version
+		&packet->version,
+		&packet->senderid
 	);
 
 	for (int i = 0; i < n_entry; i++)
@@ -76,11 +78,12 @@ int rip_packet_decode(char *message, RIPPacket *packet)
 
 int rip_packet_encode(char *message, RIPPacket *packet)
 {
-	char buf[20];
+	char buf[21];
 
 	sprintf(message, RIP_PACKET_FORMAT_HEADER,
 		packet->command,
-		packet->version
+		packet->version,
+		packet->senderid
 	);
 	for (unsigned int i = 0; i < packet->n_entry; i++)
 	{
@@ -99,9 +102,10 @@ int rip_packet_encode(char *message, RIPPacket *packet)
 
 void debug_print_rip_packet(const RIPPacket *packet)
 {
-	printf("command = %d\nversion = %d\n",
+	printf("command = %d\nversion = %d\nsender = %d\n",
 		packet->command,
-		packet->version
+		packet->version,
+		packet->senderid
 	);
 	for (unsigned int i = 0; i < packet->n_entry; i++)
 	{
@@ -127,6 +131,7 @@ int main(int argc, char **argv)
 		RIPPacket p;
 		p.command = RIP_RESPONSE;
 		p.version = RIP_VERSION_2;
+		p.senderid = 1;
 		p.n_entry = 1;
 
 		p.entry[0].AFI = AF_INET;

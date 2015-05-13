@@ -4,7 +4,7 @@
 #include <sys/socket.h>
 #include "rip_message.h"
 
-static const char *RIP_PACKET_FORMAT_HEADER = "%01d%01d00";
+static const char *RIP_PACKET_FORMAT_HEADER = "%01d%01d%02d";
 static const char *RIP_PACKET_FORMAT_ENTRY = "%02d00%04d0000%04d%04d";
 
 int rip_packet_decode(char *message, RIPPacket *packet)
@@ -27,7 +27,8 @@ int rip_packet_decode(char *message, RIPPacket *packet)
 
 	sscanf(buf, RIP_PACKET_FORMAT_HEADER,
 		&packet->command,
-		&packet->version
+		&packet->version,
+		&packet->senderid
 	);
 
 	for (int i = 0; i < n_entry; i++)
@@ -56,7 +57,8 @@ int rip_packet_encode(char *message, RIPPacket *packet)
 
 	sprintf(message, RIP_PACKET_FORMAT_HEADER,
 		packet->command,
-		packet->version
+		packet->version,
+		packet->senderid
 	);
 	for (unsigned int i = 0; i < packet->n_entry; i++)
 	{
@@ -75,9 +77,10 @@ int rip_packet_encode(char *message, RIPPacket *packet)
 
 void debug_print_rip_packet(const RIPPacket *packet)
 {
-	printf("command = %d\nversion = %d\n",
+	printf("command = %d\nversion = %d\nsender = %d\n",
 		packet->command,
-		packet->version
+		packet->version,
+		packet->senderid
 	);
 	for (unsigned int i = 0; i < packet->n_entry; i++)
 	{
