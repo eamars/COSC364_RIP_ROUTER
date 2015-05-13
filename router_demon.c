@@ -16,7 +16,7 @@
 #include "rip_message.h"
 #include "pidlock.h"
 
-#define BUF_SZ 509 // max size for rip header + 25 * entry
+#define BUF_SZ 505 // max size for rip header + 25 * entry
 
 const int DEACTIVE_TIME = 18;
 const int GARBAGE_COLLECTION_TIME = 12;
@@ -107,6 +107,7 @@ void make_response(void)
 
 			packet.command = RIP_RESPONSE;
 			packet.version = RIP_VERSION_2;
+			packet.senderid = router_id;
 
 			for (RouteTableNode *table_entry = table;
 				table_entry != NULL;
@@ -155,7 +156,7 @@ int update_table(RIPPacket *packet)
 	}
 
 	// bring the neighbour router online of already offline
-	updateNeighbourRouter(packet->entry[0].next_hop);
+	updateNeighbourRouter(packet->senderid);
 
 	// add received entry to route_table
 	for (i = 0; i < (int)packet->n_entry; i++)
@@ -240,7 +241,7 @@ static void timer_handler()
 	RouteTableNode *forward_table = createForwardingTable();
 	printTable(forward_table);
 	destroyTable(forward_table);
-	printTable(route_table);
+	//printTable(route_table);
 
 
 	second_tick++;
@@ -396,12 +397,13 @@ int router_demon_start(void)
 			remove_pid(router_id);
 			exit(-1);
 		}
-		printf("recv: [%s]\n", buffer);
 
 		// start decoding
 		RIPPacket p;
 
 		ret = decode_message(buffer, &p);
+
+		printf("recv: [%s] from %d\n", buffer, p.senderid);
 
 		if (ret == RIP_RESPONSE)
 		{

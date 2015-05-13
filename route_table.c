@@ -30,6 +30,41 @@ static RouteTableNode *create_new_entry(int dest, int next, int port, char *flag
 	return table;
 }
 
+void removeEntry(int dest, int next)
+{
+	RouteTableNode *prev = NULL;
+	RouteTableNode *curr = route_table;
+
+
+	while (curr != NULL)
+	{
+		if (curr->destination == dest && curr->next_hop == next)
+		{
+			break;
+		}
+		prev = curr;
+		curr = curr->next;
+	}
+
+	// remove at head
+	if (prev == NULL && curr != NULL)
+	{
+		route_table = curr->next;
+		free(curr);
+	}
+	// remove at middle
+	else if (prev != NULL && curr != NULL)
+	{
+		prev->next = curr->next;
+		free(curr);
+	}
+	else if (prev != NULL && curr == NULL)
+	{
+		prev->next = NULL;
+		free(curr);
+	}
+}
+
 void initRoutingTable(SingleLinkedList list)
 {
 	int addr, port, next_hop, metric;
@@ -123,12 +158,9 @@ RouteTableNode *createForwardingTable()
 	return table;
 }
 
-void insertDeadLinkIntoRoutingTable(int dest, int next, int metric)
+void insertDeadLinkIntoRoutingTable(int dest, int next)
 {
-	// since the incoming is a dead link, we
-	// 1. The route exists and still alive, then we set flag to link down and reset TTL
-	// 2. The route exists but already down. We keep settings unchanged
-	// 3. The route doesn't exist, we still insert into the route table and set flag to link down and set TTL to 0
+	// since the incoming is a dead link, we remove the entry when exists
 	RouteTableNode *prev = NULL;
 	RouteTableNode *curr = route_table;
 
@@ -137,37 +169,15 @@ void insertDeadLinkIntoRoutingTable(int dest, int next, int metric)
 		if (curr->destination == dest && curr->next_hop == next)
 		{
 			// 1. The route exists and still alive, then we set flag to link down and reset TTL
-			if (curr->flags[0] == 'L' && curr->flags[1] == 'U')
+			if (curr->flags[0] == 'L')
 			{
-				curr->flags[1] = 'D';
-				curr->metric = metric;
-				curr->TTL = 0;
-
-				return;
-			}
-
-			// 2. The route exist and already down. We keep settings unchanged
-			else if (curr->flags[0] == 'L' && curr->flags[1] == 'D')
-			{
-				return;
+				removeEntry(dest, next);
 			}
 		}
 
 		prev = curr;
 		curr = curr->next;
 	}
-
-	// 3. The route doesn't exist, we still insert into the route table and set flag to link down and set TTL to 0
-	if (curr == NULL && prev == NULL) // insert at the front
-	{
-		route_table = create_new_entry(dest, next, 0, "LD-", metric, 0);
-	}
-
-	else if (curr == NULL && prev != NULL) // insert at the end
-	{
-		prev->next = create_new_entry(dest, next, 0, "LD-", metric, 0);
-	}
-
 }
 
 void insertIntoRoutingTable(int dest, int next, int metric)
@@ -248,7 +258,7 @@ void addEntryToRoutingTable(int dest, int next, int metric)
 	// poison reverse
 	if (metric == 16)
 	{
-		insertDeadLinkIntoRoutingTable(dest, next, metric);
+		insertDeadLinkIntoRoutingTable(dest, next);
 		return;
 	}
 
@@ -260,7 +270,7 @@ void addEntryToRoutingTable(int dest, int next, int metric)
 		if (new_metric >= 16)
 		{
 			new_metric = 16;
-			insertDeadLinkIntoRoutingTable(dest, next, new_metric);
+			insertDeadLinkIntoRoutingTable(dest, next);
 			return;
 		}
 		insertIntoRoutingTable(dest, next, new_metric);
@@ -271,7 +281,7 @@ void addEntryToRoutingTable(int dest, int next, int metric)
 	if (new_metric >= 16)
 	{
 		new_metric = 16;
-		insertDeadLinkIntoRoutingTable(dest, next, new_metric);
+		insertDeadLinkIntoRoutingTable(dest, next);
 		return;
 	}
 
@@ -367,42 +377,6 @@ void printTable(RouteTableNode *table)
 void destroyTable(RouteTableNode *table)
 {
 	free_nodes(table);
-}
-
-
-void removeEntry(int dest, int next)
-{
-	RouteTableNode *prev = NULL;
-	RouteTableNode *curr = route_table;
-
-
-	while (curr != NULL)
-	{
-		if (curr->destination == dest && curr->next_hop == next)
-		{
-			break;
-		}
-		prev = curr;
-		curr = curr->next;
-	}
-
-	// remove at head
-	if (prev == NULL && curr != NULL)
-	{
-		route_table = curr->next;
-		free(curr);
-	}
-	// remove at middle
-	else if (prev != NULL && curr != NULL)
-	{
-		prev->next = curr->next;
-		free(curr);
-	}
-	else if (prev != NULL && curr == NULL)
-	{
-		prev->next = NULL;
-		free(curr);
-	}
 }
 
 int updateTTL(void)
