@@ -1,4 +1,4 @@
-# COSC364 Assignment
+# COSC364 Assignment [![Build Status](https://travis-ci.org/eamars/COSC364_RIP_ROUTER.svg)](https://travis-ci.org/eamars/COSC364_RIP_ROUTER)
 
 The Routing Information Protocol (RIP) is one of the oldest distance-vector routing protocols, which employs the hop count as a routing metric. RIP prevents routing loops by implementing a limit on the number of hops allowed in a path from the source to a destination. The maximum number of hops allowed for RIP is 15.
 
